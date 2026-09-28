@@ -200,6 +200,9 @@ HTML_REPORT_TEMPLATE = """<!DOCTYPE html>
 """
 
 
+from wmsa.paths import get_base_dir
+
+
 class ReportExporter:
     """Exports assessment reports in canonical JSON and styled HTML formats."""
 
@@ -210,7 +213,7 @@ class ReportExporter:
         scope_manifest: Optional[ScopeManifest] = None,
         base_dir: Optional[Path] = None,
     ):
-        self.base_dir = base_dir or Path.cwd()
+        self.base_dir = base_dir or get_base_dir()
         self.db = db or Database(self.base_dir / "wmsa.db")
         self.evidence_mgr = evidence_mgr or EvidenceManager(self.db, self.base_dir / "evidence")
         self.manifest = scope_manifest or load_scope_manifest(self.base_dir / "config" / "scope.yaml")

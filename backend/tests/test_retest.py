@@ -49,11 +49,14 @@ def test_env(tmp_path, manifest):
     subprocess.run(["git", "-C", str(target_repo), "add", "server.js"], check=True)
     subprocess.run(["git", "-C", str(target_repo), "commit", "-m", "initial"], check=True)
 
+    from wmsa.paths import get_base_dir
+    base = get_base_dir()
+
     patch_mgr = PatchManager(db=db, lifecycle_mgr=lc_mgr, target_dir=target_repo)
     probes_adapter = ProbesAdapter(
-        recipes_dir=Path.cwd() / "probes" / "recipes",
+        recipes_dir=base / "probes" / "recipes",
         scope_manifest=manifest,
-        base_dir=Path.cwd(),
+        base_dir=base,
     )
     retest_engine = RetestEngine(
         db=db,
@@ -61,7 +64,7 @@ def test_env(tmp_path, manifest):
         evidence_mgr=ev_mgr,
         probes_adapter=probes_adapter,
         target_dir=target_repo,
-        base_dir=Path.cwd(),
+        base_dir=base,
     )
 
     return {

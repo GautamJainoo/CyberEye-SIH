@@ -21,6 +21,9 @@ class PatchError(Exception):
     """Raised when patch application fails."""
 
 
+from wmsa.paths import get_base_dir
+
+
 class PatchManager:
     """Manages patch proposals and git branch applications in target repository."""
 
@@ -32,7 +35,7 @@ class PatchManager:
     ):
         self.db = db or Database()
         self.lifecycle_mgr = lifecycle_mgr or LifecycleManager(self.db)
-        self.target_dir = target_dir or (Path.cwd() / "target")
+        self.target_dir = target_dir or (get_base_dir() / "target")
 
     def propose_patch(
         self,

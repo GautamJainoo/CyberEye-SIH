@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 # Add src to python path so wmsa modules are found
-repo_root = Path(__file__).resolve().parent.parent
-src_path = repo_root / "src"
+backend_dir = Path(__file__).resolve().parent
+src_path = backend_dir / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 

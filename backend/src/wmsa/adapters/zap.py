@@ -27,6 +27,9 @@ from wmsa.scope import ScopeGuard, ScopeManifest, load_scope_manifest
 from wmsa.target import TargetManager
 
 
+from wmsa.paths import get_base_dir
+
+
 class ZAPAdapter:
     name: str = "zap"
 
@@ -37,7 +40,7 @@ class ZAPAdapter:
         base_dir: Optional[Path] = None,
         docker_image: str = "zaproxy/zap-stable:latest",
     ):
-        self.base_dir = base_dir or Path.cwd()
+        self.base_dir = base_dir or get_base_dir()
         self.template_path = template_path or (self.base_dir / "rules" / "zap" / "plan.template.yaml")
         self.manifest = scope_manifest or load_scope_manifest(self.base_dir / "config" / "scope.yaml")
         self.docker_image = docker_image

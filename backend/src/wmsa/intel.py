@@ -42,6 +42,9 @@ def _sanitize_fts_query(query: str) -> str:
     return " ".join(f'"{t}"' for t in tokens)
 
 
+from wmsa.paths import get_base_dir
+
+
 class ThreatIntelManager:
     """Manages threat intelligence feeds, local caching, FTS5 search, and KEV matching."""
 
@@ -53,7 +56,7 @@ class ThreatIntelManager:
         timeout: float = 15.0,
     ):
         self.db = db or Database()
-        self.cache_dir = cache_dir or (Path.cwd() / "data" / "intel_cache")
+        self.cache_dir = cache_dir or (get_base_dir() / "data" / "intel_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.ttl_seconds = ttl_seconds
         self.timeout = timeout

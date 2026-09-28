@@ -21,17 +21,17 @@ help:
 	@echo "  make clean          Clean test caches, logs, and temporary artifacts"
 
 install:
-	$(PYTHON) -m pip install -e .
+	$(PYTHON) -m pip install -e backend
 
 check:
-	$(PYTEST) -v
+	$(PYTEST) -v backend/tests
 
 scan:
 	$(WMSA) scan --profile lite
 
 report:
-	$(WMSA) report export --format json --out reports/worldmonitor_security_report.json
-	$(WMSA) report export --format html --out reports/worldmonitor_security_report.html
+	$(WMSA) report export --format json --out backend/reports/worldmonitor_security_report.json
+	$(WMSA) report export --format html --out backend/reports/worldmonitor_security_report.html
 
 server:
 	$(WMSA) server --port 8000

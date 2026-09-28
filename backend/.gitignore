@@ -9,3 +9,12 @@ venv/
 .env
 *.log
 .pytest_cache/
+target/
+evidence/
+reports/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+KILL
+.kill

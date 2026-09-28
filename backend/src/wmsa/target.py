@@ -21,6 +21,9 @@ class TargetError(Exception):
     """Raised when target setup or health checks fail."""
 
 
+from wmsa.paths import get_base_dir
+
+
 class TargetManager:
     """Manages the pinned World Monitor target checkout and local containers."""
 
@@ -30,7 +33,7 @@ class TargetManager:
         db: Optional[Database] = None,
         scope_manifest: Optional[ScopeManifest] = None,
     ):
-        self.base_dir = base_dir or Path.cwd()
+        self.base_dir = base_dir or get_base_dir()
         self.db = db or Database(self.base_dir / "wmsa.db")
         self.manifest = scope_manifest or load_scope_manifest(self.base_dir / "config" / "scope.yaml")
         self.target_dir = self.base_dir / self.manifest.local_path

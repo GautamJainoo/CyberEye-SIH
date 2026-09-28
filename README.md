@@ -70,9 +70,38 @@ flowchart TD
 
 ---
 
+## 🗂️ Project Directory Structure
+
+```text
+Secure-Lens-SIH/
+├── frontend/                   # React + Vite + Tailwind CSS Dashboard UI
+│   ├── src/                    # UI Components, pages, Inspect suite, telemetry
+│   ├── public/                 # Static assets
+│   ├── package.json            # Frontend dependencies
+│   └── vite.config.ts          # Vite build configuration
+│
+├── backend/                    # Core Python WMSA Platform & Engine
+│   ├── config/                 # Scope manifests (scope.yaml) & scan profiles
+│   ├── docker/                 # OWASP ZAP & target isolated container compose files
+│   ├── probes/                 # WM-specific safe probe recipes and review notes
+│   ├── rules/                  # Curated Semgrep & ZAP security rules
+│   ├── src/wmsa/               # Core engine (adapters, lifecycle, DB, intel, LLM)
+│   ├── tests/                  # Pytest suite (56 tests) & calibration fixture
+│   ├── target/                 # Pinned World Monitor checkout (127.0.0.1:3000)
+│   ├── pyproject.toml          # Backend package specifications
+│   ├── requirements.txt        # Python dependency manifest
+│   └── main.py                 # FastAPI application bridge
+│
+├── Makefile                    # Root runner (check, scan, report, server)
+├── README.md                   # Complete documentation
+└── .gitignore                  # Git ignore rules
+```
+
+---
+
 ## 🛠️ Tool Suite & Versions
 
-All tool binaries and versions are pinned in [`tools.lock.json`](file:///Users/dewashishhatekar/Developer/Projects/Secure-Lens-SIH/tools.lock.json):
+All tool binaries and versions are pinned in [`backend/tools.lock.json`](file:///Users/dewashishhatekar/Developer/Projects/Secure-Lens-SIH/backend/tools.lock.json):
 
 | Category | Tool | Pinned Version | Execution Mode | Scope / Safety |
 |---|---|---|---|---|
@@ -96,8 +125,8 @@ cd Secure-Lens-SIH
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install WMSA in editable mode
-pip install -e .
+# Install WMSA backend in editable mode
+pip install -e backend
 ```
 
 ### Step 2: Run Full Test & Calibration Suite

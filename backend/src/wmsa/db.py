@@ -212,11 +212,14 @@ END;
 """
 
 
+from wmsa.paths import get_base_dir
+
+
 class Database:
     """Manages SQLite database connection and operations."""
 
     def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = db_path or (Path.cwd() / "wmsa.db")
+        self.db_path = db_path or (get_base_dir() / "wmsa.db")
         self.init_db()
 
     def get_connection(self) -> sqlite3.Connection:

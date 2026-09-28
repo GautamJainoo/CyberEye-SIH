@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from wmsa.adapters.base import compute_file_sha256
 from wmsa.adapters.gitleaks import redact
 from wmsa.db import Database
+from wmsa.paths import get_base_dir
 
 
 class EvidenceManager:
@@ -21,7 +22,7 @@ class EvidenceManager:
 
     def __init__(self, db: Optional[Database] = None, evidence_dir: Optional[Path] = None):
         self.db = db or Database()
-        self.evidence_dir = evidence_dir or (Path.cwd() / "evidence")
+        self.evidence_dir = evidence_dir or (get_base_dir() / "evidence")
 
     def create_evidence_artifact(
         self,

@@ -45,6 +45,9 @@ class ProbeExecutionResult:
         self.finding = finding
 
 
+from wmsa.paths import get_base_dir
+
+
 class ProbesAdapter:
     name: str = "worldmonitor-probes"
 
@@ -54,7 +57,7 @@ class ProbesAdapter:
         scope_manifest: Optional[ScopeManifest] = None,
         base_dir: Optional[Path] = None,
     ):
-        self.base_dir = base_dir or Path.cwd()
+        self.base_dir = base_dir or get_base_dir()
         self.recipes_dir = recipes_dir or (self.base_dir / "probes" / "recipes")
         self.manifest = scope_manifest or load_scope_manifest(self.base_dir / "config" / "scope.yaml")
         self.guard = ScopeGuard(self.manifest, self.base_dir)

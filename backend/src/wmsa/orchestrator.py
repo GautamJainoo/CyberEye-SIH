@@ -27,6 +27,9 @@ from wmsa.scope import ScopeManifest, load_scope_manifest
 from wmsa.target import TargetManager
 
 
+from wmsa.paths import get_base_dir
+
+
 class Orchestrator:
     """Orchestrates security scanners with resource tracking and database persistence."""
 
@@ -37,7 +40,7 @@ class Orchestrator:
         profiles_path: Optional[Path] = None,
         base_dir: Optional[Path] = None,
     ):
-        self.base_dir = base_dir or Path.cwd()
+        self.base_dir = base_dir or get_base_dir()
         self.db = db or Database(self.base_dir / "wmsa.db")
         self.manifest = scope_manifest or load_scope_manifest(self.base_dir / "config" / "scope.yaml")
         self.profiles_path = profiles_path or (self.base_dir / "config" / "profiles.yaml")

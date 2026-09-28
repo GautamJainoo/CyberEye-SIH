@@ -65,3 +65,7 @@
   - [x] End-to-end rehearsal against pinned World Monitor build <!-- id: 8.2 -->
   - [x] Clean-machine reproduction documentation in `README.md` <!-- id: 8.3 -->
   - [x] Final verification gate <!-- id: 8.4 -->
+- [x] Structure Consolidation: Two primary folders (frontend/ and backend/) <!-- id: consolidation -->
+  - [x] Moved config, docker, probes, rules, src, tests, tools.lock.json into backend/ <!-- id: c.1 -->
+  - [x] Dynamic base directory resolution across root and backend/ invocations <!-- id: c.2 -->
+  - [x] All 56 tests passing from root and backend <!-- id: c.3 -->

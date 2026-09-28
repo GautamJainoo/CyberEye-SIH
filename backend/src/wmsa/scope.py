@@ -60,14 +60,17 @@ class ScopeManifest(BaseModel):
         return v
 
 
+from wmsa.paths import get_base_dir
+
+
 def get_kill_sentinel_path(base_dir: Optional[Path] = None) -> Path:
-    base = base_dir or Path.cwd()
+    base = base_dir or get_base_dir()
     return base / "KILL"
 
 
 def is_kill_active(base_dir: Optional[Path] = None) -> bool:
     sentinel = get_kill_sentinel_path(base_dir)
-    alt_sentinel = (base_dir or Path.cwd()) / ".kill"
+    alt_sentinel = (base_dir or get_base_dir()) / ".kill"
     return sentinel.exists() or alt_sentinel.exists()
 
 
@@ -81,13 +84,22 @@ def deactivate_kill_switch(base_dir: Optional[Path] = None) -> None:
     sentinel = get_kill_sentinel_path(base_dir)
     if sentinel.exists():
         sentinel.unlink()
-    alt_sentinel = (base_dir or Path.cwd()) / ".kill"
+    alt_sentinel = (base_dir or get_base_dir()) / ".kill"
     if alt_sentinel.exists():
         alt_sentinel.unlink()
 
 
 def load_scope_manifest(path: Optional[Path] = None) -> ScopeManifest:
-    manifest_path = path or (Path.cwd() / "config" / "scope.yaml")
+    if path:
+        manifest_path = path
+        if not manifest_path.exists():
+            if (manifest_path.parent / "backend" / "config" / "scope.yaml").exists():
+                manifest_path = manifest_path.parent / "backend" / "config" / "scope.yaml"
+            elif (get_base_dir() / "config" / "scope.yaml").exists():
+                manifest_path = get_base_dir() / "config" / "scope.yaml"
+    else:
+        manifest_path = get_base_dir() / "config" / "scope.yaml"
+
     if not manifest_path.exists():
         raise ScopeViolation(
             f"Scope manifest missing at {manifest_path}. Outbound active scans refused (fail closed)."
@@ -204,7 +216,7 @@ class ScopeGuard:
     """
 
     def __init__(self, manifest: Optional[ScopeManifest] = None, base_dir: Optional[Path] = None):
-        self.base_dir = base_dir or Path.cwd()
+        self.base_dir = base_dir or get_base_dir()
         self._manifest = manifest
 
     @property

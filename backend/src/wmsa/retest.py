@@ -19,6 +19,7 @@ from wmsa.adapters.probes import ProbesAdapter
 from wmsa.db import Database
 from wmsa.evidence import EvidenceManager
 from wmsa.lifecycle import LifecycleManager
+from wmsa.paths import get_base_dir
 from wmsa.target import TargetManager
 
 RetestOutcome = Literal["FIXED", "NOT_FIXED", "REGRESSION", "INCONCLUSIVE"]
@@ -36,7 +37,7 @@ class RetestEngine:
         target_dir: Optional[Path] = None,
         base_dir: Optional[Path] = None,
     ):
-        self.base_dir = base_dir or Path.cwd()
+        self.base_dir = base_dir or get_base_dir()
         self.db = db or Database(self.base_dir / "wmsa.db")
         self.evidence_mgr = evidence_mgr or EvidenceManager(self.db, self.base_dir / "evidence")
         self.lifecycle_mgr = lifecycle_mgr or LifecycleManager(self.db, self.evidence_mgr)
