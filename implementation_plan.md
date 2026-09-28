@@ -247,3 +247,16 @@ Tables created using standard library `sqlite3` with foreign keys enabled:
   - `POST /api/db/reset`: Cleanses SQLite findings, scans, evidence, tool_runs for clean slate.
 - Live telemetry reflecting current target and live database findings count.
 
+---
+
+## 7. Phase 11 Plan: PostgreSQL Migration & Documentation
+
+### 7.1 Objectives
+- Migrate primary database engine from SQLite to **PostgreSQL**.
+- Leverage `psycopg` (v3) driver with dict-like row mapping.
+- Implement PostgreSQL DDL schemas, constraints, PL/pgSQL append-only triggers, and GIN full-text search indexing.
+- Provide a query translation abstraction so that all existing parameterized queries (`?`) transparently execute on PostgreSQL without rewriting call sites.
+- Retain seamless fallback to SQLite for quick offline testing.
+- Create `/what_we_have_done.md` at repository root detailing all progress from Phase 0 to Phase 11.
+
+

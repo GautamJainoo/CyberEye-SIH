@@ -83,5 +83,12 @@
   - [x] 10.4 Frontend Admin Panel: Create `AdminPanel.tsx` with website URL & GitHub repo inputs, clone trigger, scan trigger, DB reset <!-- id: 10.4 -->
   - [x] 10.5 Frontend Integration: Wire Admin Panel into `Sidebar.tsx`, `Dashboard.tsx`, and `api.ts` <!-- id: 10.5 -->
   - [x] 10.6 Verification: Test clean 0-findings baseline, configure custom repo/link, verify live scan populates real findings <!-- id: 10.6 -->
+- [x] Phase 11: PostgreSQL Migration & Project Progress Documentation (`what_we_have_done.md`) <!-- id: phase-11 -->
+  - [x] 11.1 PostgreSQL Schema & DDL in `backend/src/wmsa/db.py` (triggers, FTS, constraints) <!-- id: 11.1 -->
+  - [x] 11.2 PostgreSQL primary engine in `Database` class with `psycopg` connection & query wrapper <!-- id: 11.2 -->
+  - [x] 11.3 Verification of backend against active PostgreSQL service `wmsa` <!-- id: 11.3 -->
+  - [x] 11.4 Create comprehensive `what_we_have_done.md` in root directory <!-- id: 11.4 -->
+  - [x] 11.5 End-to-end verification (FastAPI + Vite + PostgreSQL) <!-- id: 11.5 -->
+
 
 
