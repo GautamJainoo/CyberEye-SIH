@@ -44,12 +44,12 @@
   - [x] Before/after evidence and diff comparison <!-- id: 4.3 -->
   - [x] Regression suite replay <!-- id: 4.4 -->
   - [x] Phase 4 acceptance gate & commit <!-- id: 4.5 -->
-- [ ] Phase 5: Reporting & Dashboard Integration <!-- id: phase-5 -->
-  - [ ] Canonical JSON exporter <!-- id: 5.1 -->
-  - [ ] Jinja2 HTML report generator and PDF exporter <!-- id: 5.2 -->
-  - [ ] Mandatory limitations and disclosure sections <!-- id: 5.3 -->
-  - [ ] Thin FastAPI API layer & local dashboard integration (bound to 127.0.0.1) <!-- id: 5.4 -->
-  - [ ] Phase 5 acceptance gate & commit <!-- id: 5.5 -->
+- [x] Phase 5: Reporting & Dashboard Integration <!-- id: phase-5 -->
+  - [x] Canonical JSON exporter <!-- id: 5.1 -->
+  - [x] Jinja2 HTML report generator and PDF exporter <!-- id: 5.2 -->
+  - [x] Mandatory limitations and disclosure sections <!-- id: 5.3 -->
+  - [x] Thin FastAPI API layer & local dashboard integration (bound to 127.0.0.1) <!-- id: 5.4 -->
+  - [x] Phase 5 acceptance gate & commit <!-- id: 5.5 -->
 - [ ] Phase 6: Threat Intelligence & CISA KEV Sync <!-- id: phase-6 -->
   - [ ] Sync workers for OSV, GHSA, and CISA KEV with caching & rate limits <!-- id: 6.1 -->
   - [ ] SQLite FTS5 search index (`advisories_fts`) <!-- id: 6.2 -->

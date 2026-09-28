@@ -116,7 +116,8 @@ class LifecycleManager:
             # 6. Category-specific gate checks
             cat = finding.category
             if cat == "sast":
-                if not finding.file or not finding.line_start or not finding.rule_id:
+                has_rule = any(s.rule_id for s in finding.sources)
+                if not finding.file or not finding.line_start or not has_rule:
                     raise LifecycleViolation("SAST evidence gate requires file, line_start, and rule_id.")
             elif cat == "sca":
                 if not finding.package or not finding.package_version:
