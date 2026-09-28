@@ -1,0 +1,44 @@
+# OWASP ZAP Automation Framework Plan Template for WMSA
+# Strictly scoped to local target and approved route prefixes
+env:
+  contexts:
+    - name: "wmsa-worldmonitor-context"
+      urls:
+        - "http://{{TARGET_HOST}}:{{TARGET_PORT}}"
+      includePaths:
+        {% for prefix in ALLOWED_PREFIXES %}
+        - "http://{{TARGET_HOST}}:{{TARGET_PORT}}{{prefix}}.*"
+        {% endfor %}
+      excludePaths:
+        - "http://{{TARGET_HOST}}:{{TARGET_PORT}}/api/auth/logout.*"
+        - "http://{{TARGET_HOST}}:{{TARGET_PORT}}/api/delete.*"
+  parameters:
+    failOnError: false
+    progressToStdout: true
+
+jobs:
+  - type: spider
+    parameters:
+      context: "wmsa-worldmonitor-context"
+      maxDuration: {{SPIDER_MAX_MINS}}
+      maxDepth: {{SPIDER_MAX_DEPTH}}
+      url: "http://{{TARGET_HOST}}:{{TARGET_PORT}}"
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 2
+
+  - type: activeScan
+    parameters:
+      context: "wmsa-worldmonitor-context"
+      maxRuleDurationInMins: {{ACTIVE_RULE_MAX_MINS}}
+      maxScanDurationInMins: {{ACTIVE_SCAN_MAX_MINS}}
+    policyDefinition:
+      defaultStrength: "low"
+      defaultThreshold: "medium"
+
+  - type: report
+    parameters:
+      template: "traditional-json"
+      reportDir: "/zap/reports"
+      reportFile: "{{REPORT_FILE}}"

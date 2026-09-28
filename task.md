@@ -24,12 +24,12 @@
   - [x] Probe recipes in `probes/recipes/` with preconditions, safe behavior, stop conditions <!-- id: 2.3 -->
   - [x] Safe probe runners in `probes/runners/` adhering to scope guard <!-- id: 2.4 -->
   - [x] Phase 2 acceptance gate & commit <!-- id: 2.5 -->
-- [ ] Phase 2b: OWASP ZAP DAST Adapter <!-- id: phase-2b -->
-  - [ ] Docker Compose ZAP configuration on isolated network <!-- id: 2b.1 -->
-  - [ ] Dynamic Automation Framework plan generation strictly within allowed scope <!-- id: 2b.2 -->
-  - [ ] Preflight health gating and applicability filter <!-- id: 2b.3 -->
-  - [ ] ZAP alert parser and sanitized evidence capture <!-- id: 2b.4 -->
-  - [ ] Phase 2b acceptance gate & commit <!-- id: 2b.5 -->
+- [x] Phase 2b: OWASP ZAP DAST Adapter <!-- id: phase-2b -->
+  - [x] Docker Compose ZAP configuration on isolated network <!-- id: 2b.1 -->
+  - [x] Dynamic Automation Framework plan generation strictly within allowed scope <!-- id: 2b.2 -->
+  - [x] Preflight health gating and applicability filter <!-- id: 2b.3 -->
+  - [x] ZAP alert parser and sanitized evidence capture <!-- id: 2b.4 -->
+  - [x] Phase 2b acceptance gate & commit <!-- id: 2b.5 -->
 - [ ] Phase 3: Normalization, Fingerprinting, Deduplication & Evidence Gate <!-- id: phase-3 -->
   - [ ] Canonical Pydantic Finding model v1.0 <!-- id: 3.1 -->
   - [ ] Fingerprint generator & multi-source deduplication <!-- id: 3.2 -->
