@@ -1,0 +1,67 @@
+# Tasks: World Monitor Security Assessment Workflow (SIH 2026, PS 26163)
+
+- [x] Phase 0: Foundations & Scope Enforcement <!-- id: phase-0 -->
+  - [x] Read World Monitor repository structure, docs, and SECURITY.md <!-- id: 0.1 -->
+  - [x] Verify tool installation methods (gitleaks, osv-scanner, semgrep, zap via docker) <!-- id: 0.2 -->
+  - [x] Write Phase 0 implementation plan and get user approval <!-- id: 0.3 -->
+  - [x] Initialize repository structure (`tools.lock.json`, `config/`, `docker/`, `rules/`, `probes/`, `src/wmsa/`, `tests/`) <!-- id: 0.4 -->
+  - [x] Implement `config/scope.yaml` and `src/wmsa/scope.py` (strict scope guard, URL canonicalization, fail-closed, kill switch) <!-- id: 0.5 -->
+  - [x] Implement `src/wmsa/target.py` (target setup with commit pinning, up/down, health gate) <!-- id: 0.6 -->
+  - [x] Implement SQLite schema and migrations in `src/wmsa/db.py` <!-- id: 0.7 -->
+  - [x] Implement basic CLI in `src/wmsa/cli.py` (`wmsa init`, `wmsa scope validate`, `wmsa kill`, `wmsa target ...`) <!-- id: 0.8 -->
+  - [x] Write and pass unit tests for Phase 0 (scope guard block/allow matrix, kill switch, target health) <!-- id: 0.9 -->
+  - [x] Phase 0 acceptance gate & commit <!-- id: 0.10 -->
+- [ ] Phase 1: SAST, Secret, and SCA Adapters <!-- id: phase-1 -->
+  - [ ] Tool preflight & `--help` flag verifications <!-- id: 1.1 -->
+  - [ ] Gitleaks adapter with `--redact`, JSON parser, salted fingerprinting, secret leakage tests <!-- id: 1.2 -->
+  - [ ] OSV-Scanner adapter with JSON parser, advisory mapping, KEV cross-referencing <!-- id: 1.3 -->
+  - [ ] Semgrep adapter with `--metrics=off`, JSON parser, snippet hashing <!-- id: 1.4 -->
+  - [ ] Tests for all three adapters on saved fixtures <!-- id: 1.5 -->
+  - [ ] Phase 1 acceptance gate & commit <!-- id: 1.6 -->
+- [ ] Phase 2: Manual Code Review, WM Probes & Custom Rules <!-- id: phase-2 -->
+  - [ ] Systematic manual code review notes in `probes/REVIEW_NOTES.md` <!-- id: 2.1 -->
+  - [ ] Custom Semgrep rules in `rules/semgrep/worldmonitor/` <!-- id: 2.2 -->
+  - [ ] Probe recipes in `probes/recipes/` with preconditions, safe behavior, stop conditions <!-- id: 2.3 -->
+  - [ ] Safe probe runners in `probes/runners/` adhering to scope guard <!-- id: 2.4 -->
+  - [ ] Phase 2 acceptance gate & commit <!-- id: 2.5 -->
+- [ ] Phase 2b: OWASP ZAP DAST Adapter <!-- id: phase-2b -->
+  - [ ] Docker Compose ZAP configuration on isolated network <!-- id: 2b.1 -->
+  - [ ] Dynamic Automation Framework plan generation strictly within allowed scope <!-- id: 2b.2 -->
+  - [ ] Preflight health gating and applicability filter <!-- id: 2b.3 -->
+  - [ ] ZAP alert parser and sanitized evidence capture <!-- id: 2b.4 -->
+  - [ ] Phase 2b acceptance gate & commit <!-- id: 2b.5 -->
+- [ ] Phase 3: Normalization, Fingerprinting, Deduplication & Evidence Gate <!-- id: phase-3 -->
+  - [ ] Canonical Pydantic Finding model v1.0 <!-- id: 3.1 -->
+  - [ ] Fingerprint generator & multi-source deduplication <!-- id: 3.2 -->
+  - [ ] Append-only lifecycle state machine in `lifecycle.py` <!-- id: 3.3 -->
+  - [ ] Evidence gate enforcement (actor constraints: no tool/LLM promotion to VERIFIED/FIXED) <!-- id: 3.4 -->
+  - [ ] Evidence hashing (SHA-256) and storage in `src/wmsa/evidence.py` <!-- id: 3.5 -->
+  - [ ] Unit tests for transitions, actors, and evidence gates <!-- id: 3.6 -->
+  - [ ] Phase 3 acceptance gate & commit <!-- id: 3.7 -->
+- [ ] Phase 4: Patching & Exact Retest Workflow <!-- id: phase-4 -->
+  - [ ] Git branch/worktree patch manager (`patching.py`) <!-- id: 4.1 -->
+  - [ ] Exact recipe replay runner (`retest.py`) with identical inputs and limits <!-- id: 4.2 -->
+  - [ ] Before/after evidence and diff comparison <!-- id: 4.3 -->
+  - [ ] Regression suite replay <!-- id: 4.4 -->
+  - [ ] Phase 4 acceptance gate & commit <!-- id: 4.5 -->
+- [ ] Phase 5: Reporting & Dashboard Integration <!-- id: phase-5 -->
+  - [ ] Canonical JSON exporter <!-- id: 5.1 -->
+  - [ ] Jinja2 HTML report generator and PDF exporter <!-- id: 5.2 -->
+  - [ ] Mandatory limitations and disclosure sections <!-- id: 5.3 -->
+  - [ ] Thin FastAPI API layer & local dashboard integration (bound to 127.0.0.1) <!-- id: 5.4 -->
+  - [ ] Phase 5 acceptance gate & commit <!-- id: 5.5 -->
+- [ ] Phase 6: Threat Intelligence & CISA KEV Sync <!-- id: phase-6 -->
+  - [ ] Sync workers for OSV, GHSA, and CISA KEV with caching & rate limits <!-- id: 6.1 -->
+  - [ ] SQLite FTS5 search index (`advisories_fts`) <!-- id: 6.2 -->
+  - [ ] Exact CVE-to-KEV matching and staleness tracking <!-- id: 6.3 -->
+  - [ ] Phase 6 acceptance gate & commit <!-- id: 6.4 -->
+- [ ] Phase 7: Guarded Local LLM Copilot (Optional / Off by Default) <!-- id: phase-7 -->
+  - [ ] Provider abstraction (local Ollama/vLLM first, typed tools only) <!-- id: 7.1 -->
+  - [ ] Redaction pipeline before LLM context entry <!-- id: 7.2 -->
+  - [ ] Prompt injection resistance tests with untrusted data fencing <!-- id: 7.3 -->
+  - [ ] Phase 7 acceptance gate & commit <!-- id: 7.4 -->
+- [ ] Phase 8: Verification, Calibration Fixture & Clean-Machine Run <!-- id: phase-8 -->
+  - [ ] Calibration fixture with labelled planted issues <!-- id: 8.1 -->
+  - [ ] End-to-end rehearsal against pinned World Monitor build <!-- id: 8.2 -->
+  - [ ] Clean-machine reproduction documentation in `README.md` <!-- id: 8.3 -->
+  - [ ] Final verification gate <!-- id: 8.4 -->

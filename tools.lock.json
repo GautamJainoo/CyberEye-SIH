@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "wmsa-tools-lock",
+  "version": "1.0.0",
+  "tools": {
+    "semgrep": {
+      "version": "1.176.0",
+      "install_method": "homebrew",
+      "binary": "semgrep",
+      "flags": ["--metrics=off", "--json"]
+    },
+    "gitleaks": {
+      "version": "8.30.1",
+      "install_method": "homebrew",
+      "binary": "gitleaks",
+      "flags": ["--redact", "--report-format=json"]
+    },
+    "osv-scanner": {
+      "version": "2.6.0",
+      "install_method": "homebrew",
+      "binary": "osv-scanner",
+      "flags": ["--format=json"]
+    },
+    "zap": {
+      "version": "stable",
+      "image": "zaproxy/zap-stable",
+      "install_method": "docker",
+      "flags": ["-cmd", "-autorun"]
+    }
+  }
+}

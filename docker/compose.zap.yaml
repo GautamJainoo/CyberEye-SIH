@@ -1,0 +1,19 @@
+# Isolated Docker Compose runner for OWASP ZAP
+# Connects to the same isolated network as target
+version: "3.8"
+
+networks:
+  wmsa_isolated:
+    external: true
+
+services:
+  zap:
+    image: zaproxy/zap-stable:latest
+    container_name: wmsa_zap
+    restart: "no"
+    networks:
+      - wmsa_isolated
+    volumes:
+      - ../rules/zap:/zap/wrk:ro
+      - ../evidence/zap:/zap/reports:rw
+    command: ["zap.sh", "-cmd", "-autorun", "/zap/wrk/plan.yaml"]

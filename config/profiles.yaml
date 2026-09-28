@@ -1,0 +1,31 @@
+profiles:
+  lite:
+    description: "Resource-constrained sequential scan without ZAP"
+    tools:
+      - gitleaks
+      - osv
+      - semgrep
+      - probes
+    concurrency: 1
+    max_scan_minutes: 10
+    max_ram_mb: 2048
+    enable_zap: false
+
+  standard:
+    description: "Full multi-tool scan including scoped OWASP ZAP dynamic analysis"
+    tools:
+      - gitleaks
+      - osv
+      - semgrep
+      - zap
+      - probes
+    concurrency: 2
+    max_scan_minutes: 25
+    max_ram_mb: 4096
+    enable_zap: true
+    zap:
+      max_spider_depth: 3
+      max_spider_duration_mins: 2
+      max_scan_duration_mins: 5
+      max_rule_duration_mins: 1
+      max_request_rate: 10

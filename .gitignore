@@ -59,3 +59,15 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# WMSA Security Assessment Artifacts
+target/
+evidence/
+reports/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+KILL
+.kill
+
