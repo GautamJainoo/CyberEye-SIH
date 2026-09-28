@@ -30,14 +30,14 @@
   - [x] Preflight health gating and applicability filter <!-- id: 2b.3 -->
   - [x] ZAP alert parser and sanitized evidence capture <!-- id: 2b.4 -->
   - [x] Phase 2b acceptance gate & commit <!-- id: 2b.5 -->
-- [ ] Phase 3: Normalization, Fingerprinting, Deduplication & Evidence Gate <!-- id: phase-3 -->
-  - [ ] Canonical Pydantic Finding model v1.0 <!-- id: 3.1 -->
-  - [ ] Fingerprint generator & multi-source deduplication <!-- id: 3.2 -->
-  - [ ] Append-only lifecycle state machine in `lifecycle.py` <!-- id: 3.3 -->
-  - [ ] Evidence gate enforcement (actor constraints: no tool/LLM promotion to VERIFIED/FIXED) <!-- id: 3.4 -->
-  - [ ] Evidence hashing (SHA-256) and storage in `src/wmsa/evidence.py` <!-- id: 3.5 -->
-  - [ ] Unit tests for transitions, actors, and evidence gates <!-- id: 3.6 -->
-  - [ ] Phase 3 acceptance gate & commit <!-- id: 3.7 -->
+- [x] Phase 3: Normalization, Fingerprinting, Deduplication & Evidence Gate <!-- id: phase-3 -->
+  - [x] Canonical Pydantic Finding model v1.0 <!-- id: 3.1 -->
+  - [x] Fingerprint generator & multi-source deduplication <!-- id: 3.2 -->
+  - [x] Append-only lifecycle state machine in `lifecycle.py` <!-- id: 3.3 -->
+  - [x] Evidence gate enforcement (actor constraints: no tool/LLM promotion to VERIFIED/FIXED) <!-- id: 3.4 -->
+  - [x] Evidence hashing (SHA-256) and storage in `src/wmsa/evidence.py` <!-- id: 3.5 -->
+  - [x] Unit tests for transitions, actors, and evidence gates <!-- id: 3.6 -->
+  - [x] Phase 3 acceptance gate & commit <!-- id: 3.7 -->
 - [ ] Phase 4: Patching & Exact Retest Workflow <!-- id: phase-4 -->
   - [ ] Git branch/worktree patch manager (`patching.py`) <!-- id: 4.1 -->
   - [ ] Exact recipe replay runner (`retest.py`) with identical inputs and limits <!-- id: 4.2 -->
