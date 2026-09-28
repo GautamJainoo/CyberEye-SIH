@@ -38,12 +38,12 @@
   - [x] Evidence hashing (SHA-256) and storage in `src/wmsa/evidence.py` <!-- id: 3.5 -->
   - [x] Unit tests for transitions, actors, and evidence gates <!-- id: 3.6 -->
   - [x] Phase 3 acceptance gate & commit <!-- id: 3.7 -->
-- [ ] Phase 4: Patching & Exact Retest Workflow <!-- id: phase-4 -->
-  - [ ] Git branch/worktree patch manager (`patching.py`) <!-- id: 4.1 -->
-  - [ ] Exact recipe replay runner (`retest.py`) with identical inputs and limits <!-- id: 4.2 -->
-  - [ ] Before/after evidence and diff comparison <!-- id: 4.3 -->
-  - [ ] Regression suite replay <!-- id: 4.4 -->
-  - [ ] Phase 4 acceptance gate & commit <!-- id: 4.5 -->
+- [x] Phase 4: Patching & Exact Retest Workflow <!-- id: phase-4 -->
+  - [x] Git branch/worktree patch manager (`patching.py`) <!-- id: 4.1 -->
+  - [x] Exact recipe replay runner (`retest.py`) with identical inputs and limits <!-- id: 4.2 -->
+  - [x] Before/after evidence and diff comparison <!-- id: 4.3 -->
+  - [x] Regression suite replay <!-- id: 4.4 -->
+  - [x] Phase 4 acceptance gate & commit <!-- id: 4.5 -->
 - [ ] Phase 5: Reporting & Dashboard Integration <!-- id: phase-5 -->
   - [ ] Canonical JSON exporter <!-- id: 5.1 -->
   - [ ] Jinja2 HTML report generator and PDF exporter <!-- id: 5.2 -->
