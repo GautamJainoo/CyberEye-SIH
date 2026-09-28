@@ -50,11 +50,11 @@
   - [x] Mandatory limitations and disclosure sections <!-- id: 5.3 -->
   - [x] Thin FastAPI API layer & local dashboard integration (bound to 127.0.0.1) <!-- id: 5.4 -->
   - [x] Phase 5 acceptance gate & commit <!-- id: 5.5 -->
-- [ ] Phase 6: Threat Intelligence & CISA KEV Sync <!-- id: phase-6 -->
-  - [ ] Sync workers for OSV, GHSA, and CISA KEV with caching & rate limits <!-- id: 6.1 -->
-  - [ ] SQLite FTS5 search index (`advisories_fts`) <!-- id: 6.2 -->
-  - [ ] Exact CVE-to-KEV matching and staleness tracking <!-- id: 6.3 -->
-  - [ ] Phase 6 acceptance gate & commit <!-- id: 6.4 -->
+- [x] Phase 6: Threat Intelligence & CISA KEV Sync <!-- id: phase-6 -->
+  - [x] Sync workers for OSV, GHSA, and CISA KEV with caching & rate limits <!-- id: 6.1 -->
+  - [x] SQLite FTS5 search index (`advisories_fts`) <!-- id: 6.2 -->
+  - [x] Exact CVE-to-KEV matching and staleness tracking <!-- id: 6.3 -->
+  - [x] Phase 6 acceptance gate & commit <!-- id: 6.4 -->
 - [ ] Phase 7: Guarded Local LLM Copilot (Optional / Off by Default) <!-- id: phase-7 -->
   - [ ] Provider abstraction (local Ollama/vLLM first, typed tools only) <!-- id: 7.1 -->
   - [ ] Redaction pipeline before LLM context entry <!-- id: 7.2 -->

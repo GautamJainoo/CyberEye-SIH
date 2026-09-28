@@ -1,0 +1,22 @@
+[
+  {
+    "id": 12345,
+    "ghsa_id": "GHSA-35jh-r3h4-6jhm",
+    "cve_id": "CVE-2021-23337",
+    "summary": "Command Injection in lodash",
+    "description": "Lodash before 4.17.21 vulnerable to command injection via template function.",
+    "severity": "high",
+    "published_at": "2021-02-15T00:00:00Z",
+    "updated_at": "2021-02-20T00:00:00Z"
+  },
+  {
+    "id": 67890,
+    "ghsa_id": "GHSA-j992-q882-9999",
+    "cve_id": "CVE-2024-99999",
+    "summary": "Improper Input Handling in test-lib",
+    "description": "Test library flaw allows denial of service.",
+    "severity": "medium",
+    "published_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-02T00:00:00Z"
+  }
+]

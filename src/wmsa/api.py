@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from wmsa.db import Database
 from wmsa.evidence import EvidenceManager
+from wmsa.intel import ThreatIntelManager
 from wmsa.lifecycle import LifecycleManager, LifecycleViolation
 from wmsa.orchestrator import Orchestrator
 from wmsa.patching import PatchManager
@@ -54,6 +55,7 @@ target_mgr = TargetManager(db=db)
 patch_mgr = PatchManager(db=db, lifecycle_mgr=lifecycle_mgr)
 retest_engine = RetestEngine(db=db, lifecycle_mgr=lifecycle_mgr, evidence_mgr=evidence_mgr)
 report_exporter = ReportExporter(db=db, evidence_mgr=evidence_mgr)
+intel_mgr = ThreatIntelManager(db=db)
 
 
 class ScanTriggerRequest(BaseModel):
@@ -256,3 +258,22 @@ def export_report(format: str = Query("json", pattern="^(json|html)$")):
     else:
         json_data = report_exporter.export_json()
         return json_data
+
+
+@api_app.get("/api/intel/status")
+def get_intel_status():
+    statuses = intel_mgr.get_feed_statuses()
+    return {"feeds": statuses}
+
+
+@api_app.post("/api/intel/sync")
+def sync_intel(force: bool = False):
+    res = intel_mgr.sync_all(force=force)
+    return res
+
+
+@api_app.get("/api/intel/search")
+def search_intel(q: str = Query(..., min_length=1), limit: int = 50):
+    results = intel_mgr.search_advisories(q, limit=limit)
+    return {"query": q, "total": len(results), "results": results}
+

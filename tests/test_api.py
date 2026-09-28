@@ -131,3 +131,15 @@ def test_api_report_export(client, sample_finding):
     assert res_html.status_code == 200
     assert "text/html" in res_html.headers["content-type"]
     assert "World Monitor Security Assessment Report" in res_html.text
+
+
+def test_api_intel_endpoints(client):
+    res_status = client.get("/api/intel/status")
+    assert res_status.status_code == 200
+    assert "feeds" in res_status.json()
+
+    res_search = client.get("/api/intel/search?q=lodash")
+    assert res_search.status_code == 200
+    data = res_search.json()
+    assert "results" in data
+    assert data["query"] == "lodash"

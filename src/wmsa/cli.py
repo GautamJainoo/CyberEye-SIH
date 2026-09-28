@@ -33,6 +33,7 @@ from wmsa.scope import (
     is_kill_active,
     load_scope_manifest,
 )
+from wmsa.intel import ThreatIntelManager
 from wmsa.target import TargetManager
 
 app = typer.Typer(
@@ -47,6 +48,7 @@ probes_app = typer.Typer(help="World Monitor specific safe probe operations")
 findings_app = typer.Typer(help="Findings management and detail inspection")
 patch_app = typer.Typer(help="Patch proposal and isolated git branching")
 report_app = typer.Typer(help="Report export operations")
+intel_app = typer.Typer(help="Threat intelligence and CISA KEV synchronization")
 
 app.add_typer(target_app, name="target")
 app.add_typer(scope_app, name="scope")
@@ -54,6 +56,7 @@ app.add_typer(probes_app, name="probes")
 app.add_typer(findings_app, name="findings")
 app.add_typer(patch_app, name="patch")
 app.add_typer(report_app, name="report")
+app.add_typer(intel_app, name="intel")
 
 
 @app.command()
@@ -483,6 +486,85 @@ def report_export(
     else:
         exporter.export_json(destination)
         rprint(f"[bold green]✔ Canonical JSON report exported to: {destination}[/bold green]")
+
+
+@intel_app.command("sync")
+def intel_sync(
+    force: bool = typer.Option(False, "--force", "-f", help="Force refresh from feeds, ignoring TTL"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Synchronizes threat intelligence feeds (CISA KEV, GHSA) into local SQLite FTS5 database."""
+    if not yes:
+        confirm = typer.confirm("Synchronize external threat feeds into local database?", default=True)
+        if not confirm:
+            raise typer.Abort()
+
+    mgr = ThreatIntelManager()
+    rprint("[cyan]Fetching threat intelligence feeds...[/cyan]")
+    res = mgr.sync_all(force=force)
+    rprint(Panel(json.dumps(res, indent=2), title="Threat Intel Sync Results"))
+
+
+@intel_app.command("search")
+def intel_search(
+    query: str = typer.Argument(..., help="Search query or CVE identifier (e.g. 'CVE-2021-23337')"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Maximum results to return"),
+):
+    """Searches local threat intelligence index using SQLite FTS5."""
+    mgr = ThreatIntelManager()
+    results = mgr.search_advisories(query, limit=limit)
+    if not results:
+        rprint(f"[yellow]No threat advisories matching '{query}'[/yellow]")
+        return
+
+    table = Table(title=f"Threat Advisories matching '{query}' ({len(results)} found)")
+    table.add_column("Advisory ID", style="cyan")
+    table.add_column("Source", style="blue")
+    table.add_column("CVE / GHSA", style="magenta")
+    table.add_column("KEV Match", style="bold red")
+    table.add_column("Title", style="white")
+
+    for a in results:
+        ref = a.get("cve_id") or a.get("ghsa_id") or "—"
+        kev = "✔ YES" if a.get("kev_match") else "NO"
+        table.add_row(
+            a.get("advisory_id", ""),
+            a.get("source", ""),
+            ref,
+            kev,
+            (a.get("title") or "")[:60],
+        )
+
+    rprint(table)
+
+
+@intel_app.command("status")
+def intel_status():
+    """Displays local threat intelligence feed freshness and sync status."""
+    mgr = ThreatIntelManager()
+    statuses = mgr.get_feed_statuses()
+    if not statuses:
+        rprint("[yellow]No feeds synchronized yet. Run 'wmsa intel sync'.[/yellow]")
+        return
+
+    table = Table(title="Threat Intelligence Feed Status")
+    table.add_column("Feed Name", style="cyan")
+    table.add_column("Status", style="green")
+    table.add_column("Records", style="magenta")
+    table.add_column("Last Synced (UTC)", style="white")
+    table.add_column("Freshness", style="bold yellow")
+
+    for s in statuses:
+        freshness = "[bold red]STALE (>24h)[/bold red]" if s.get("is_stale") else "[green]FRESH[/green]"
+        table.add_row(
+            s.get("feed_name", ""),
+            s.get("status", ""),
+            str(s.get("record_count", 0)),
+            s.get("last_sync_time", "Never"),
+            freshness,
+        )
+
+    rprint(table)
 
 
 @app.command()
