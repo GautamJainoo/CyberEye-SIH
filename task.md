@@ -18,12 +18,12 @@
   - [x] Semgrep adapter with `--metrics=off`, JSON parser, snippet hashing <!-- id: 1.4 -->
   - [x] Tests for all three adapters on saved fixtures <!-- id: 1.5 -->
   - [x] Phase 1 acceptance gate & commit <!-- id: 1.6 -->
-- [ ] Phase 2: Manual Code Review, WM Probes & Custom Rules <!-- id: phase-2 -->
-  - [ ] Systematic manual code review notes in `probes/REVIEW_NOTES.md` <!-- id: 2.1 -->
-  - [ ] Custom Semgrep rules in `rules/semgrep/worldmonitor/` <!-- id: 2.2 -->
-  - [ ] Probe recipes in `probes/recipes/` with preconditions, safe behavior, stop conditions <!-- id: 2.3 -->
-  - [ ] Safe probe runners in `probes/runners/` adhering to scope guard <!-- id: 2.4 -->
-  - [ ] Phase 2 acceptance gate & commit <!-- id: 2.5 -->
+- [x] Phase 2: Manual Code Review, WM Probes & Custom Rules <!-- id: phase-2 -->
+  - [x] Systematic manual code review notes in `probes/REVIEW_NOTES.md` <!-- id: 2.1 -->
+  - [x] Custom Semgrep rules in `rules/semgrep/worldmonitor/` <!-- id: 2.2 -->
+  - [x] Probe recipes in `probes/recipes/` with preconditions, safe behavior, stop conditions <!-- id: 2.3 -->
+  - [x] Safe probe runners in `probes/runners/` adhering to scope guard <!-- id: 2.4 -->
+  - [x] Phase 2 acceptance gate & commit <!-- id: 2.5 -->
 - [ ] Phase 2b: OWASP ZAP DAST Adapter <!-- id: phase-2b -->
   - [ ] Docker Compose ZAP configuration on isolated network <!-- id: 2b.1 -->
   - [ ] Dynamic Automation Framework plan generation strictly within allowed scope <!-- id: 2b.2 -->

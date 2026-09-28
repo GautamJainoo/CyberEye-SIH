@@ -1,0 +1,37 @@
+id: "wm-probe-ratelimit-01"
+title: "Client-IP Header Spoofing Resistance on Rate-Limit Identity"
+category: "configuration"
+cwe_hint: "CWE-290: Authentication Bypass by Spoofing"
+source_refs:
+  - "target/api/_client-ip.js:154-160"
+  - "target/api/_client-ip.js:200-218"
+preconditions:
+  - "Target application running on loopback"
+  - "Health check passed"
+identities:
+  - id: "synthetic_user_alpha"
+    role: "standard_user"
+steps:
+  - name: "rotate_cf_connecting_ip_header"
+    method: "GET"
+    path: "/api/rss-proxy?url=https://cisa.gov/rss"
+    headers_variants:
+      - "cf-connecting-ip: 198.51.100.1"
+      - "cf-connecting-ip: 198.51.100.2"
+      - "cf-connecting-ip: 198.51.100.3"
+    expected_safe: "Without x-wm-edge-proof, cf-connecting-ip is ignored or unproven"
+expected_safe_behavior: "Direct origin hits cannot bypass rate limit counters by spoofing cf-connecting-ip without Cloudflare transit proof."
+observation_fields:
+  - "client_ip_resolution"
+  - "rate_limit_headers"
+max_requests: 6
+stop_conditions:
+  - "Request count reaches max_requests"
+cleanup: []
+evidence_to_capture:
+  - "headers_sent"
+  - "rate_limit_mode_header"
+verdict_rules:
+  EXPECTATION_MET: "rate limit does not reset per spoofed header"
+  EXPECTATION_NOT_MET: "rate limit counters completely bypassed via header rotation"
+  INCONCLUSIVE: "endpoint unavailable"

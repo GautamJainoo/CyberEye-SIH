@@ -1,0 +1,47 @@
+id: "wm-probe-cors-01"
+title: "Cross-Origin Resource Sharing (CORS) Policy Validation"
+category: "configuration"
+cwe_hint: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains"
+source_refs:
+  - "target/api/_cors.js:9-25"
+  - "target/api/_cors.js:135-147"
+preconditions:
+  - "Target application running on loopback"
+  - "Health check passed"
+identities:
+  - id: "synthetic_user_alpha"
+    role: "standard_user"
+steps:
+  - name: "preflight_with_attacker_origin"
+    method: "OPTIONS"
+    path: "/api/rss-proxy"
+    headers:
+      Origin: "https://attacker.evil.com"
+      Access-Control-Request-Method: "GET"
+    expected_status: 204
+    assert_header_not: "Access-Control-Allow-Origin: https://attacker.evil.com"
+  - name: "request_with_attacker_origin"
+    method: "GET"
+    path: "/api/rss-proxy?url=https://cisa.gov/news.xml"
+    headers:
+      Origin: "https://attacker.evil.com"
+    expected_status: 403
+    assert_field: "error"
+    expected_value: "Origin not allowed"
+expected_safe_behavior: "Requests from unauthorized cross-origin domains must be rejected with HTTP 403 Origin not allowed."
+observation_fields:
+  - "status_code"
+  - "acao_header"
+  - "response_body"
+max_requests: 4
+stop_conditions:
+  - "Request count reaches max_requests"
+cleanup: []
+evidence_to_capture:
+  - "origin_header_sent"
+  - "acao_received"
+  - "response_status"
+verdict_rules:
+  EXPECTATION_MET: "response 403 and no credentialed reflection of evil origin"
+  EXPECTATION_NOT_MET: "status 200 with Access-Control-Allow-Origin: https://attacker.evil.com and Access-Control-Allow-Credentials: true"
+  INCONCLUSIVE: "endpoint unavailable"

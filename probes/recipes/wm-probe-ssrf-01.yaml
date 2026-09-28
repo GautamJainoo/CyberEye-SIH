@@ -1,0 +1,42 @@
+id: "wm-probe-ssrf-01"
+title: "SSRF Policy & Domain Allowlist on RSS Proxy Endpoint"
+category: "dast_io"
+cwe_hint: "CWE-918: Server-Side Request Forgery (SSRF)"
+source_refs:
+  - "target/api/rss-proxy.js:283-291"
+  - "target/api/_rss-allowed-domain-match.js:38-40"
+preconditions:
+  - "Target application running on loopback"
+  - "Health check passed"
+identities:
+  - id: "synthetic_user_alpha"
+    role: "standard_user"
+steps:
+  - name: "test_unallowed_domain"
+    method: "GET"
+    path: "/api/rss-proxy?url=https://attacker.evil.com/feed.xml"
+    expected_status: 403
+  - name: "test_loopback_ssrf"
+    method: "GET"
+    path: "/api/rss-proxy?url=http://127.0.0.1:3000/api/health"
+    expected_status: 403
+  - name: "test_cloud_metadata_ssrf"
+    method: "GET"
+    path: "/api/rss-proxy?url=http://169.254.169.254/latest/meta-data/"
+    expected_status: 403
+expected_safe_behavior: "All non-allowlisted domains, loopback addresses, and metadata endpoints must be rejected with HTTP 403 Domain not allowed."
+observation_fields:
+  - "status_code"
+  - "response_error"
+max_requests: 6
+stop_conditions:
+  - "Any step returns 200 with external response body"
+  - "Request count reaches max_requests"
+cleanup: []
+evidence_to_capture:
+  - "target_urls_tested"
+  - "sanitized_responses"
+verdict_rules:
+  EXPECTATION_MET: "all steps return 400 or 403"
+  EXPECTATION_NOT_MET: "any step returns 200 or fetches forbidden destination"
+  INCONCLUSIVE: "endpoint unavailable or connection refused"

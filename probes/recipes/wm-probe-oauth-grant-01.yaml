@@ -1,0 +1,40 @@
+id: "wm-probe-oauth-grant-01"
+title: "HMAC Verification on Cross-Subdomain Pro Grant Tokens"
+category: "authorization"
+cwe_hint: "CWE-347: Improper Verification of Cryptographic Signature"
+source_refs:
+  - "target/api/_mcp-grant-hmac.ts:99-166"
+preconditions:
+  - "Unit or local execution context"
+identities:
+  - id: "synthetic_user_alpha"
+    role: "standard_user"
+steps:
+  - name: "submit_expired_grant"
+    payload:
+      userId: "synthetic_user_alpha"
+      nonce: "nonce_123"
+      exp: 1000
+    expected_status: "expired"
+  - name: "submit_tampered_signature_grant"
+    payload:
+      userId: "synthetic_user_alpha"
+      nonce: "nonce_123"
+      exp: 9999999999999
+    tamper_sig: true
+    expected_status: "bad-signature"
+expected_safe_behavior: "Grant verifier must strictly reject expired timestamps, malformed payload tokens, and tampered HMAC signatures."
+observation_fields:
+  - "verification_status"
+  - "rejection_reason"
+max_requests: 3
+stop_conditions:
+  - "Rejection reasons match expected"
+cleanup: []
+evidence_to_capture:
+  - "token_sample"
+  - "verification_result"
+verdict_rules:
+  EXPECTATION_MET: "tampered and expired grants rejected"
+  EXPECTATION_NOT_MET: "tampered or expired grant accepted as valid"
+  INCONCLUSIVE: "execution failed"

@@ -1,0 +1,39 @@
+id: "wm-probe-auth-01"
+title: "Authorization Gating on User MCP Quota Endpoint"
+category: "authorization"
+cwe_hint: "CWE-285: Improper Authorization"
+source_refs:
+  - "target/api/user/mcp-quota.ts:119-129"
+  - "target/server/_shared/auth-session.ts:50-80"
+preconditions:
+  - "Target application running on loopback"
+  - "Health check passed"
+identities:
+  - id: "synthetic_user_alpha"
+    role: "unprivileged"
+    expected: "denied_when_unauth"
+steps:
+  - name: "request_quota_without_auth"
+    method: "GET"
+    path: "/api/user/mcp-quota"
+    headers: {}
+    expected_status: 401
+    assert_field: "error"
+    expected_value: "unauthenticated"
+expected_safe_behavior: "Endpoint must refuse requests without valid Clerk user session and return HTTP 401."
+observation_fields:
+  - "status_code"
+  - "response_body"
+  - "headers"
+max_requests: 5
+stop_conditions:
+  - "Received 401 or 403 (expected safe behavior)"
+  - "Request count reaches max_requests"
+cleanup: []
+evidence_to_capture:
+  - "request_method_and_headers"
+  - "response_status_and_body"
+verdict_rules:
+  EXPECTATION_MET: "status_code == 401"
+  EXPECTATION_NOT_MET: "status_code == 200"
+  INCONCLUSIVE: "status_code not in [200, 401, 403, 404, 500]"
