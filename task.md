@@ -60,8 +60,8 @@
   - [x] Redaction pipeline before LLM context entry <!-- id: 7.2 -->
   - [x] Prompt injection resistance tests with untrusted data fencing <!-- id: 7.3 -->
   - [x] Phase 7 acceptance gate & commit <!-- id: 7.4 -->
-- [ ] Phase 8: Verification, Calibration Fixture & Clean-Machine Run <!-- id: phase-8 -->
-  - [ ] Calibration fixture with labelled planted issues <!-- id: 8.1 -->
-  - [ ] End-to-end rehearsal against pinned World Monitor build <!-- id: 8.2 -->
-  - [ ] Clean-machine reproduction documentation in `README.md` <!-- id: 8.3 -->
-  - [ ] Final verification gate <!-- id: 8.4 -->
+- [x] Phase 8: Verification, Calibration Fixture & Clean-Machine Run <!-- id: phase-8 -->
+  - [x] Calibration fixture with labelled planted issues <!-- id: 8.1 -->
+  - [x] End-to-end rehearsal against pinned World Monitor build <!-- id: 8.2 -->
+  - [x] Clean-machine reproduction documentation in `README.md` <!-- id: 8.3 -->
+  - [x] Final verification gate <!-- id: 8.4 -->

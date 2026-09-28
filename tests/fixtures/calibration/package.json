@@ -1,0 +1,9 @@
+{
+  "name": "wmsa-calibration-fixture",
+  "version": "1.0.0",
+  "description": "Calibration test fixture with known vulnerable dependencies",
+  "main": "src/app.js",
+  "dependencies": {
+    "lodash": "4.17.15"
+  }
+}

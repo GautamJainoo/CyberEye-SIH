@@ -1,0 +1,51 @@
+{
+  "description": "Ground truth known planted issues for WMSA calibration fixture (SIH 2026 PS 26163)",
+  "fixture_version": "1.0",
+  "planted_issues": [
+    {
+      "id": "CALIB-SAST-01",
+      "category": "sast",
+      "rule_or_cwe": "CWE-79",
+      "file": "src/app.js",
+      "description": "Direct innerHTML assignment with unsanitized user query parameter",
+      "expected_tool": "semgrep"
+    },
+    {
+      "id": "CALIB-SECRET-01",
+      "category": "secret",
+      "rule_or_cwe": "github-pat",
+      "file": "config/secrets.env",
+      "description": "Planted fake GitHub Personal Access Token test secret",
+      "expected_tool": "gitleaks"
+    },
+    {
+      "id": "CALIB-SCA-01",
+      "category": "sca",
+      "rule_or_cwe": "CVE-2021-23337",
+      "file": "package-lock.json",
+      "package": "lodash",
+      "description": "Known vulnerable lodash version 4.17.15",
+      "expected_tool": "osv-scanner"
+    },
+    {
+      "id": "CALIB-PROBE-01",
+      "category": "dast_io",
+      "rule_or_cwe": "CWE-918",
+      "file": "api/rss-proxy.js",
+      "description": "RSS proxy SSRF to internal loopback target",
+      "expected_tool": "worldmonitor-probes"
+    }
+  ],
+  "planted_clean_controls": [
+    {
+      "id": "CALIB-CLEAN-01",
+      "file": "src/app.js",
+      "description": "Safe textContent rendering (should NOT trigger XSS rule)"
+    },
+    {
+      "id": "CALIB-CLEAN-02",
+      "file": "src/app.js",
+      "description": "Environment variable placeholder without literal secret"
+    }
+  ]
+}
