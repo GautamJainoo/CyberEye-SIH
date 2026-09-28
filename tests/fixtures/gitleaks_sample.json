@@ -1,0 +1,22 @@
+[
+  {
+    "Description": "Generic API Key",
+    "StartLine": 12,
+    "EndLine": 12,
+    "StartColumn": 15,
+    "EndColumn": 55,
+    "Match": "token = \"dummy_secret_do_not_leak_1234567890abcdef\"",
+    "Secret": "dummy_secret_do_not_leak_1234567890abcdef",
+    "File": "config/test_keys.py",
+    "SymlinkFile": "",
+    "Commit": "0d5c618e4307414546a9be84a482ac06b7d56749",
+    "Entropy": 3.75,
+    "Author": "Developer",
+    "Email": "dev@example.com",
+    "Date": "2026-09-28T12:00:00Z",
+    "Message": "Add test config",
+    "Tags": [],
+    "RuleID": "generic-api-key",
+    "Fingerprint": "0d5c618e4307414546a9be84a482ac06b7d56749:config/test_keys.py:generic-api-key:12"
+  }
+]

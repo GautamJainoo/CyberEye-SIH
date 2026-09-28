@@ -1,0 +1,19 @@
+# World Monitor Gitleaks Configuration and Allowlist
+title = "WMSA Gitleaks Allowlist for World Monitor"
+
+[allowlist]
+description = "Allowlist for synthetic test fixtures and documentation dummy placeholders"
+regexes = [
+    '''dummy_synthetic_[a-zA-Z0-9_]+''',
+    '''mock_jwt_[a-zA-Z0-9_]+''',
+    '''openssl rand -hex 32''',
+    '''REPLACE_ME''',
+    '''<unprivileged_jwt>''',
+    '''YOUR_API_KEY_HERE''',
+]
+paths = [
+    '''tests/fixtures/.*''',
+    '''docs/.*''',
+    '''target/SELF_HOSTING\.md''',
+    '''target/\.env\.example''',
+]

@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "check_id": "javascript.browser.security.insecure-inner-html.insecure-inner-html",
+      "path": "src/components/Renderer.tsx",
+      "start": {
+        "line": 42,
+        "col": 5,
+        "offset": 1240
+      },
+      "end": {
+        "line": 42,
+        "col": 48,
+        "offset": 1283
+      },
+      "extra": {
+        "message": "User input directly rendered via innerHTML",
+        "metadata": {
+          "cwe": ["CWE-79"],
+          "owasp": ["A03:2021 - Injection"]
+        },
+        "severity": "ERROR",
+        "lines": "element.innerHTML = untrustedUserInput;"
+      }
+    }
+  ],
+  "errors": []
+}

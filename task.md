@@ -11,13 +11,13 @@
   - [x] Implement basic CLI in `src/wmsa/cli.py` (`wmsa init`, `wmsa scope validate`, `wmsa kill`, `wmsa target ...`) <!-- id: 0.8 -->
   - [x] Write and pass unit tests for Phase 0 (scope guard block/allow matrix, kill switch, target health) <!-- id: 0.9 -->
   - [x] Phase 0 acceptance gate & commit <!-- id: 0.10 -->
-- [ ] Phase 1: SAST, Secret, and SCA Adapters <!-- id: phase-1 -->
-  - [ ] Tool preflight & `--help` flag verifications <!-- id: 1.1 -->
-  - [ ] Gitleaks adapter with `--redact`, JSON parser, salted fingerprinting, secret leakage tests <!-- id: 1.2 -->
-  - [ ] OSV-Scanner adapter with JSON parser, advisory mapping, KEV cross-referencing <!-- id: 1.3 -->
-  - [ ] Semgrep adapter with `--metrics=off`, JSON parser, snippet hashing <!-- id: 1.4 -->
-  - [ ] Tests for all three adapters on saved fixtures <!-- id: 1.5 -->
-  - [ ] Phase 1 acceptance gate & commit <!-- id: 1.6 -->
+- [x] Phase 1: SAST, Secret, and SCA Adapters <!-- id: phase-1 -->
+  - [x] Tool preflight & `--help` flag verifications <!-- id: 1.1 -->
+  - [x] Gitleaks adapter with `--redact`, JSON parser, salted fingerprinting, secret leakage tests <!-- id: 1.2 -->
+  - [x] OSV-Scanner adapter with JSON parser, advisory mapping, KEV cross-referencing <!-- id: 1.3 -->
+  - [x] Semgrep adapter with `--metrics=off`, JSON parser, snippet hashing <!-- id: 1.4 -->
+  - [x] Tests for all three adapters on saved fixtures <!-- id: 1.5 -->
+  - [x] Phase 1 acceptance gate & commit <!-- id: 1.6 -->
 - [ ] Phase 2: Manual Code Review, WM Probes & Custom Rules <!-- id: phase-2 -->
   - [ ] Systematic manual code review notes in `probes/REVIEW_NOTES.md` <!-- id: 2.1 -->
   - [ ] Custom Semgrep rules in `rules/semgrep/worldmonitor/` <!-- id: 2.2 -->
