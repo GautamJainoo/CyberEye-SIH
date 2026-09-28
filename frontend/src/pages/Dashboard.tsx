@@ -17,9 +17,10 @@ import AttackSurfaceMap from '../components/AttackSurfaceMap'
 import AiAssistant from '../components/AiAssistant'
 import RecentActivity from '../components/RecentActivity'
 import ReportSummary from '../components/ReportSummary'
+import AdminPanel from '../components/AdminPanel'
 import { Severity } from '../types'
 import { useToast } from '../components/Toast'
-import { Shield, Sparkles, Terminal, Activity, ChevronRight } from 'lucide-react'
+import { Shield, Sparkles, Terminal, Activity, ChevronRight, Settings } from 'lucide-react'
 
 export default function Dashboard() {
   const { toast } = useToast()
@@ -103,6 +104,17 @@ export default function Dashboard() {
               }`}
             >
               Dashboard Overview
+            </button>
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'admin'
+                  ? 'bg-teal-500 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Settings size={13} />
+              <span>Admin &amp; Target Setup</span>
             </button>
             <button
               onClick={() => setActiveTab('inspect')}
@@ -268,6 +280,16 @@ export default function Dashboard() {
                   isZeroData={isZeroData}
                 />
               </>
+            )}
+
+            {/* TAB: ADMIN & TARGET SETUP */}
+            {activeTab === 'admin' && (
+              <AdminPanel
+                onScanComplete={() => {
+                  toast('success', 'Target Ready', 'Target configured and synchronized with live assessment engine.')
+                }}
+                onNavigateToFindings={() => setActiveTab('vulns')}
+              />
             )}
 
             {/* TAB: INSPECT & CHROME DEVTOOLS SUITE */}

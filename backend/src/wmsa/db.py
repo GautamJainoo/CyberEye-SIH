@@ -218,8 +218,8 @@ from wmsa.paths import get_base_dir
 class Database:
     """Manages SQLite database connection and operations."""
 
-    def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = db_path or (get_base_dir() / "wmsa.db")
+    def __init__(self, db_path: Optional[Path | str] = None):
+        self.db_path = Path(db_path) if db_path else (get_base_dir() / "wmsa.db")
         self.init_db()
 
     def get_connection(self) -> sqlite3.Connection:
@@ -279,3 +279,33 @@ class Database:
                 """,
                 (scope_id, manifest_yaml, commit_sha, approved_by, approved_at, now),
             )
+
+    def purge_assessment_data(self) -> Dict[str, int]:
+        """Purges all finding, scan, evidence, and lifecycle records to restore clean slate."""
+        c_findings = 0
+        manifest_rows = []
+        if self.db_path.exists():
+            try:
+                with self.get_connection() as conn:
+                    c_findings = conn.execute("SELECT count(*) as c FROM findings").fetchone()["c"]
+                    manifests = conn.execute("SELECT * FROM scope_manifests").fetchall()
+                    manifest_rows = [dict(m) for m in manifests]
+            except Exception:
+                pass
+            self.db_path.unlink(missing_ok=True)
+
+        self.init_db()
+
+        if manifest_rows:
+            with self.get_connection() as conn:
+                for m in manifest_rows:
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO scope_manifests (id, manifest_yaml, commit_sha, approved_by, approved_at, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (m["id"], m["manifest_yaml"], m["commit_sha"], m["approved_by"], m["approved_at"], m["created_at"]),
+                    )
+
+        return {"purged_findings": c_findings}
+

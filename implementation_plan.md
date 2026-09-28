@@ -227,3 +227,23 @@ Tables created using standard library `sqlite3` with foreign keys enabled:
 5. `frontend/src/components/ReportSummary.tsx`: Real report download triggers.
 6. End-to-end verification against live backend on `127.0.0.1:8000`.
 
+---
+
+## 6. Phase 10 Plan: Clean Slate & Dynamic Admin Panel
+
+### 6.1 Objectives
+- Remove all dummy findings and mock telemetry from `frontend/src/data.ts`.
+- Provide a clean baseline state (0 vulnerabilities, 0 mock findings) on first load.
+- Purge SQLite assessment database (`backend/wmsa.db`) to ensure clean start without sample findings.
+- Implement an **Admin Panel** (`AdminPanel.tsx`) in the frontend allowing user to configure:
+  1. Target Website URL (e.g. `http://127.0.0.1:3000` or custom loopback / web endpoint).
+  2. Target GitHub Repository URL (e.g. `https://github.com/koala73/worldmonitor` or user-specified repo).
+  3. Pinned Commit SHA / Branch (auto-detected or manually specified).
+  4. One-click Target Cloning & Setup.
+  5. One-click Security Audit Scan Execution.
+  6. Database Clean Slate (Purge all findings).
+- Implement backend endpoints:
+  - `POST /api/target/configure`: Clones/updates target repo, updates scope manifest, checks out commit, optionally resets DB.
+  - `POST /api/db/reset`: Cleanses SQLite findings, scans, evidence, tool_runs for clean slate.
+- Live telemetry reflecting current target and live database findings count.
+

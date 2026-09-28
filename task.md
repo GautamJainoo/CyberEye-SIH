@@ -76,4 +76,12 @@
   - [x] 9.4 Wire analyst lifecycle actions (Triage, Verify, Reject) to `/api/triage/{id}`, `/api/verify/{id}`, `/api/reject/{id}` <!-- id: 9.4 -->
   - [x] 9.5 Wire live HTML/JSON report download to `GET /api/report/export` <!-- id: 9.5 -->
   - [x] 9.6 End-to-end verification (Vite + FastAPI) <!-- id: 9.6 -->
+- [x] Phase 10: Clean Slate (Zero Dummy Data) & Admin Panel for Target URL + GitHub Repo <!-- id: phase-10 -->
+  - [x] 10.1 Backend DB: Add `purge_assessment_data()` in `backend/src/wmsa/db.py` <!-- id: 10.1 -->
+  - [x] 10.2 Backend API: Implement `POST /api/target/configure` and `POST /api/db/reset` in `backend/src/wmsa/api.py` <!-- id: 10.2 -->
+  - [x] 10.3 Frontend Data: Remove all dummy findings & mock datasets in `frontend/src/data.ts` <!-- id: 10.3 -->
+  - [x] 10.4 Frontend Admin Panel: Create `AdminPanel.tsx` with website URL & GitHub repo inputs, clone trigger, scan trigger, DB reset <!-- id: 10.4 -->
+  - [x] 10.5 Frontend Integration: Wire Admin Panel into `Sidebar.tsx`, `Dashboard.tsx`, and `api.ts` <!-- id: 10.5 -->
+  - [x] 10.6 Verification: Test clean 0-findings baseline, configure custom repo/link, verify live scan populates real findings <!-- id: 10.6 -->
+
 

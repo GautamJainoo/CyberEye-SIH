@@ -79,17 +79,61 @@ class RetestTriggerRequest(BaseModel):
     analyst_id: str = "analyst"
 
 
+class TargetConfigRequest(BaseModel):
+    repo_url: str
+    website_url: Optional[str] = "http://127.0.0.1:3000"
+    commit_sha: Optional[str] = None
+    reset_db: bool = True
+
+
 @api_app.get("/api/health")
 def api_health():
     healthy, msg = target_mgr.check_health()
     manifest = load_scope_manifest()
+    with db.get_connection() as conn:
+        count = conn.execute("SELECT count(*) as c FROM findings").fetchone()["c"]
     return {
         "status": "online",
+        "repo_url": manifest.repo_url,
         "target_commit": manifest.commit_sha,
         "target_healthy": healthy,
         "target_message": msg,
         "environment": "local-isolated",
+        "findings_count": count,
     }
+
+
+@api_app.post("/api/target/configure")
+def configure_target_endpoint(req: TargetConfigRequest):
+    global orchestrator, target_mgr
+    try:
+        conf = target_mgr.configure(
+            repo_url=req.repo_url,
+            website_url=req.website_url,
+            commit_sha=req.commit_sha,
+        )
+        if req.reset_db:
+            db.purge_assessment_data()
+
+        # Reload orchestrator with updated scope
+        orchestrator = Orchestrator(db=db)
+        healthy, msg = target_mgr.check_health()
+        return {
+            "status": "configured",
+            "repo_url": conf["repo_url"],
+            "website_url": conf["website_url"],
+            "commit_sha": conf["commit_sha"],
+            "target_healthy": healthy,
+            "target_message": msg,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api_app.post("/api/db/reset")
+def reset_db_endpoint():
+    res = db.purge_assessment_data()
+    return {"status": "purged", **res}
 
 
 @api_app.get("/api/scope")

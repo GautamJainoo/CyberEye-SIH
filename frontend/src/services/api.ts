@@ -4,10 +4,28 @@ const API_BASE = 'http://127.0.0.1:8000/api'
 
 export interface BackendHealth {
   status: string
+  repo_url?: string
   target_commit: string
   target_healthy: boolean
   target_message: string
   environment: string
+  findings_count?: number
+}
+
+export interface TargetConfigPayload {
+  repo_url: string
+  website_url?: string
+  commit_sha?: string
+  reset_db?: boolean
+}
+
+export interface TargetConfigResponse {
+  status: string
+  repo_url: string
+  website_url: string
+  commit_sha: string
+  target_healthy: boolean
+  target_message: string
 }
 
 export interface BackendFinding {
@@ -203,3 +221,28 @@ export async function rejectFinding(findingId: string, reason: string): Promise<
 export function getExportUrl(format: 'json' | 'html'): string {
   return `${API_BASE}/report/export?format=${format}`
 }
+
+export async function configureTarget(payload: TargetConfigPayload): Promise<TargetConfigResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/target/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function resetDatabase(): Promise<{ status: string; purged_findings: number } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/db/reset`, { method: 'POST' })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+

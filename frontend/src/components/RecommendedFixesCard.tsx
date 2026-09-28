@@ -38,13 +38,18 @@ export default function RecommendedFixesCard({ onSelectFix }: RecommendedFixesCa
           <ChevronRight size={14} className="text-slate-400" />
         </div>
         <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
-          3 suggestions
+          {recommendedFixesData.length} suggestions
         </span>
       </div>
 
       {/* Fixes List */}
       <div className="space-y-2.5">
-        {recommendedFixesData.map((item) => {
+        {recommendedFixesData.length === 0 ? (
+          <div className="py-8 text-center text-slate-400 text-xs font-mono">
+            No pending remediations. Clean baseline state.
+          </div>
+        ) : (
+          recommendedFixesData.map((item) => {
           const { icon: Icon, bg } = iconMap[item.iconType]
           return (
             <div
@@ -91,7 +96,7 @@ export default function RecommendedFixesCard({ onSelectFix }: RecommendedFixesCa
               </div>
             </div>
           )
-        })}
+        }))}
       </div>
     </div>
   )

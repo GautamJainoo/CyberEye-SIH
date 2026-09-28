@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   LayoutDashboard, ShieldCheck, Bug, Activity,
-  FileText, Globe, ChevronDown, KeyRound, LogOut, UserCheck, Sun, Moon, Bot
+  FileText, Globe, ChevronDown, KeyRound, LogOut, UserCheck, Sun, Moon, Bot, Settings
 } from 'lucide-react'
 import { useToast } from './Toast'
 import { useTheme } from '../context/ThemeContext'
@@ -15,6 +15,7 @@ interface SidebarProps {
 
 const navItems = [
   { id: 'dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
+  { id: 'admin',       icon: Settings,        label: 'Admin & Target Setup' },
   { id: 'inspect',     icon: Activity,        label: 'Inspect & Speed' },
   { id: 'scan',        icon: ShieldCheck,     label: 'Security Scan' },
   { id: 'vulns',       icon: Bug,             label: 'Vulnerabilities & PoC' },

@@ -166,3 +166,112 @@ class TargetManager:
         cmd = ["docker", "compose", "-f", str(compose_file), "down"]
         res = subprocess.run(cmd, capture_output=True, text=True)
         return res.stdout
+
+    def configure(
+        self,
+        repo_url: str,
+        website_url: Optional[str] = None,
+        commit_sha: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Configures a new or updated target repo and website URL.
+        Clones repository into target_dir, discovers HEAD SHA if not provided,
+        updates config/scope.yaml, and refreshes manifest.
+        """
+        import shutil
+        from datetime import datetime, timezone
+        from urllib.parse import urlparse
+        import yaml
+
+        # If repo_url is changing and target exists with different origin, wipe and re-clone
+        if (self.target_dir / ".git").exists():
+            origin_res = subprocess.run(
+                ["git", "-C", str(self.target_dir), "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+            )
+            current_origin = origin_res.stdout.strip()
+            if current_origin != repo_url:
+                shutil.rmtree(self.target_dir, ignore_errors=True)
+
+        self.target_dir.parent.mkdir(parents=True, exist_ok=True)
+        if not (self.target_dir / ".git").exists():
+            subprocess.run(
+                ["git", "clone", repo_url, str(self.target_dir)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        # If commit_sha specified, checkout; else get HEAD
+        if commit_sha:
+            subprocess.run(
+                ["git", "-C", str(self.target_dir), "fetch", "--all"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(self.target_dir), "checkout", commit_sha],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        res = subprocess.run(
+            ["git", "-C", str(self.target_dir), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        resolved_sha = res.stdout.strip()
+
+        # Update scope.yaml
+        scope_path = self.base_dir / "config" / "scope.yaml"
+        allowed_hosts = ["127.0.0.1", "localhost", "worldmonitor", "target"]
+        allowed_ports = [3000, 8080, 46123]
+
+        if website_url:
+            parsed = urlparse(website_url)
+            host = parsed.hostname or "127.0.0.1"
+            if host not in allowed_hosts and host not in ("worldmonitor.app", "www.worldmonitor.app"):
+                allowed_hosts.append(host)
+            if parsed.port and parsed.port not in allowed_ports:
+                allowed_ports.append(parsed.port)
+
+        scope_data = {
+            "scope_id": f"scope-{uuid.uuid4().hex[:6]}",
+            "repo_url": repo_url,
+            "commit_sha": resolved_sha,
+            "local_path": "target",
+            "allowed_hosts": allowed_hosts,
+            "allowed_ports": allowed_ports,
+            "allowed_route_prefixes": ["/", "/api/", "/docs/"],
+            "profile": "lite",
+            "max_requests_per_probe": 20,
+            "max_scan_minutes": 15,
+            "approved_by": "security-analyst",
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        with open(scope_path, "w", encoding="utf-8") as fp:
+            yaml.safe_dump(scope_data, fp, sort_keys=False)
+
+        # Refresh in-memory manifest
+        self.manifest = load_scope_manifest(scope_path)
+        self.db.save_scope_manifest(
+            scope_id=scope_data["scope_id"],
+            manifest_yaml=yaml.safe_dump(scope_data),
+            commit_sha=resolved_sha,
+            approved_by=scope_data["approved_by"],
+            approved_at=scope_data["approved_at"],
+        )
+
+        return {
+            "scope_id": scope_data["scope_id"],
+            "repo_url": repo_url,
+            "commit_sha": resolved_sha,
+            "website_url": website_url or "http://127.0.0.1:3000",
+            "target_dir": str(self.target_dir),
+        }
+

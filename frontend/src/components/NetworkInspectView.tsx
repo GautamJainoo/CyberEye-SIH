@@ -170,7 +170,14 @@ export default function NetworkInspectView({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-              {filteredMetrics.map((row) => (
+              {filteredMetrics.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-400 font-mono text-xs">
+                    No endpoint telemetry recorded. Configure target in Admin Panel and run scan to inspect live routes.
+                  </td>
+                </tr>
+              ) : (
+                filteredMetrics.map((row) => (
                 <tr
                   key={row.id}
                   onClick={() => handleRowClick(row)}
@@ -257,7 +264,7 @@ export default function NetworkInspectView({
                     )}
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>
