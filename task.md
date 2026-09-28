@@ -55,11 +55,11 @@
   - [x] SQLite FTS5 search index (`advisories_fts`) <!-- id: 6.2 -->
   - [x] Exact CVE-to-KEV matching and staleness tracking <!-- id: 6.3 -->
   - [x] Phase 6 acceptance gate & commit <!-- id: 6.4 -->
-- [ ] Phase 7: Guarded Local LLM Copilot (Optional / Off by Default) <!-- id: phase-7 -->
-  - [ ] Provider abstraction (local Ollama/vLLM first, typed tools only) <!-- id: 7.1 -->
-  - [ ] Redaction pipeline before LLM context entry <!-- id: 7.2 -->
-  - [ ] Prompt injection resistance tests with untrusted data fencing <!-- id: 7.3 -->
-  - [ ] Phase 7 acceptance gate & commit <!-- id: 7.4 -->
+- [x] Phase 7: Guarded Local LLM Copilot (Optional / Off by Default) <!-- id: phase-7 -->
+  - [x] Provider abstraction (local Ollama/vLLM first, typed tools only) <!-- id: 7.1 -->
+  - [x] Redaction pipeline before LLM context entry <!-- id: 7.2 -->
+  - [x] Prompt injection resistance tests with untrusted data fencing <!-- id: 7.3 -->
+  - [x] Phase 7 acceptance gate & commit <!-- id: 7.4 -->
 - [ ] Phase 8: Verification, Calibration Fixture & Clean-Machine Run <!-- id: phase-8 -->
   - [ ] Calibration fixture with labelled planted issues <!-- id: 8.1 -->
   - [ ] End-to-end rehearsal against pinned World Monitor build <!-- id: 8.2 -->
