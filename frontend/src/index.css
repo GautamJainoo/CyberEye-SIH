@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Base ──────────────────────────────────────────────── */
+@layer base {
+  * { box-sizing: border-box; }
+
+  html.dark { color-scheme: dark; }
+
+  body {
+    font-size: 14px;
+    @apply bg-slate-50 text-slate-800 dark:bg-[#0b0f1a] dark:text-slate-100
+           font-sans antialiased transition-colors duration-150;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track  { @apply bg-slate-100 dark:bg-slate-900; }
+  ::-webkit-scrollbar-thumb  { @apply bg-slate-300 dark:bg-slate-700 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-400 dark:bg-slate-600; }
+}
+
+/* ─── Components ─────────────────────────────────────────── */
+@layer components {
+
+  /* Card */
+  .card {
+    @apply bg-white dark:bg-[#111827] rounded-xl
+           border border-slate-200 dark:border-slate-800
+           shadow-sm dark:shadow-none transition-colors duration-150;
+  }
+
+  /* Severity badges */
+  .badge-critical {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold
+           bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400
+           border border-red-200 dark:border-red-900;
+  }
+  .badge-high {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold
+           bg-orange-50 dark:bg-orange-950/50 text-orange-700 dark:text-orange-400
+           border border-orange-200 dark:border-orange-900;
+  }
+  .badge-medium {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold
+           bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400
+           border border-amber-200 dark:border-amber-900;
+  }
+  .badge-low {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold
+           bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400
+           border border-emerald-200 dark:border-emerald-900;
+  }
+
+  /* Status badges */
+  .badge-open {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium
+           bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400
+           border border-red-200 dark:border-red-900;
+  }
+  .badge-progress {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium
+           bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400
+           border border-sky-200 dark:border-sky-900;
+  }
+  .badge-fixed {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium
+           bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400
+           border border-emerald-200 dark:border-emerald-900;
+  }
+
+  /* Sidebar nav */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg
+           text-slate-600 dark:text-slate-400
+           hover:bg-sky-50 dark:hover:bg-sky-950/30
+           hover:text-sky-700 dark:hover:text-sky-300
+           transition-colors cursor-pointer text-xs font-medium;
+  }
+  .nav-item.active {
+    @apply bg-sky-50 dark:bg-sky-950/40
+           text-sky-700 dark:text-sky-300 font-semibold;
+  }
+
+  /* Stat card */
+  .stat-card {
+    @apply card p-4 hover:shadow-md dark:hover:border-slate-700 transition-all cursor-pointer;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg
+           bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white
+           text-xs font-medium transition-all shadow-sm disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg
+           bg-white dark:bg-slate-800
+           border border-slate-200 dark:border-slate-700
+           text-slate-700 dark:text-slate-200
+           hover:bg-slate-50 dark:hover:bg-slate-700
+           text-xs font-medium transition-colors shadow-sm disabled:opacity-50;
+  }
+
+  /* Table rows */
+  .table-row-hover {
+    @apply hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer;
+  }
+
+  /* Attack map node */
+  .attack-node {
+    @apply rounded-lg border px-3 py-2 text-xs font-medium
+           flex items-center gap-1.5 transition-all;
+  }
+  .attack-node:hover {
+    box-shadow: 0 0 0 2px rgba(14,165,233,0.3);
+  }
+}
+
+/* ─── Radar polygon ─────────────────────────────────────── */
+.radar-polygon {
+  fill: rgba(14, 165, 233, 0.15);
+  stroke: rgba(14, 165, 233, 0.7);
+  stroke-width: 1.5;
+}
+.dark .radar-polygon {
+  fill: rgba(56, 189, 248, 0.2);
+  stroke: rgba(56, 189, 248, 0.8);
+}
+
+/* ─── Live pulse dot ─────────────────────────────────────── */
+@keyframes soft-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.pulse-dot { animation: soft-pulse 2.2s ease-in-out infinite; }
+
+/* ─── Donut / chart labels ───────────────────────────────── */
+.donut-label { font-family: 'Inter', sans-serif; }
+
+/* ─── Sidebar brand gradient ─────────────────────────────── */
+.sidebar-brand-bar {
+  background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%);
+}
+
+/* ─── Dropdown / fade animations ────────────────────────── */
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.animate-dropdown-in {
+  animation: dropdown-in 0.15s ease-out forwards;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
