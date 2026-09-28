@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { vulnerabilities as sampleVulns } from '../data'
 import { Vulnerability, Severity, Status } from '../types'
 import { severityClass, statusClass } from '../utils'
 import { ArrowUpRight, ChevronRight, Filter, Download, ArrowUpDown, Search, ShieldCheck, RefreshCw } from 'lucide-react'
 import VulnModal from './VulnModal'
 import { useToast } from './Toast'
+import { fetchFindings, mapBackendFinding } from '../services/api'
 
 interface Props {
   searchQuery?: string
@@ -23,6 +24,8 @@ export default function FindingsTable({
 }: Props) {
   const { toast } = useToast()
   const [vulns, setVulns] = useState<Vulnerability[]>(sampleVulns)
+  const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false)
+  const [loading, setLoading] = useState<boolean>(false)
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null)
   const [severityFilter, setSeverityFilter] = useState<Severity | 'All'>(initialFilter)
   const [statusFilter, setStatusFilter] = useState<Status | 'All'>('All')
@@ -30,10 +33,27 @@ export default function FindingsTable({
   const [sortAsc, setSortAsc] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
+  const reloadFindings = async () => {
+    setLoading(true)
+    const data = await fetchFindings()
+    if (data && data.findings && data.findings.length > 0) {
+      const mapped = data.findings.map((f, i) => mapBackendFinding(f, i))
+      setVulns(mapped)
+      setIsLiveBackend(true)
+    } else {
+      setIsLiveBackend(false)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    reloadFindings()
+  }, [])
+
   // When isZeroData is true, active findings list is empty []
   const activeVulnList = isZeroData ? [] : vulns
 
-  const handleStatusChange = (id: number, newStatus: Status) => {
+  const handleStatusChange = (id: number | string, newStatus: Status) => {
     setVulns(prev => prev.map(v => v.id === id ? { ...v, status: newStatus } : v))
   }
 
@@ -88,6 +108,20 @@ export default function FindingsTable({
           }`}>
             {filteredVulns.length}
           </span>
+          {isLiveBackend && (
+            <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live Backend
+            </span>
+          )}
+          <button
+            onClick={reloadFindings}
+            disabled={loading}
+            className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+            title="Reload from backend"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -129,7 +163,7 @@ export default function FindingsTable({
               onClick={() => setShowAll(!showAll)}
               className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium transition-colors px-2 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer"
             >
-              {showAll ? 'Show Top 6' : 'View All (12)'} <ArrowUpRight size={12} />
+              {showAll ? 'Show Top 6' : `View All (${filteredVulns.length})`} <ArrowUpRight size={12} />
             </button>
           )}
         </div>

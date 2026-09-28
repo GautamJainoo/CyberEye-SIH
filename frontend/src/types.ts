@@ -3,20 +3,26 @@ export type Severity = 'Critical' | 'High' | 'Medium' | 'Low'
 export type Status = 'Open' | 'In Progress' | 'Fixed'
 
 export interface Vulnerability {
-  id: number
+  id: number | string
+  backendId?: string
   name: string
   description: string
   severity: Severity
   component: string
   cvss: number
   status: Status
+  rawStatus?: string
   cve?: string
   cwe?: string
-  toolDetected?: 'Semgrep (SAST)' | 'Gitleaks (Secrets)' | 'OSV-Scanner (SCA)' | 'OWASP ZAP (DAST)'
+  toolDetected?: 'Semgrep (SAST)' | 'Gitleaks (Secrets)' | 'OSV-Scanner (SCA)' | 'OWASP ZAP (DAST)' | string
   stepsToReproduce?: string[]
   pocPayload?: string
   businessImpact?: string
   remediationCode?: string
+  evidenceCount?: number
+  kevMatch?: boolean
+  file?: string
+  lineStart?: number
 }
 
 export interface RadarDataPoint {

@@ -69,3 +69,11 @@
   - [x] Moved config, docker, probes, rules, src, tests, tools.lock.json into backend/ <!-- id: c.1 -->
   - [x] Dynamic base directory resolution across root and backend/ invocations <!-- id: c.2 -->
   - [x] All 56 tests passing from root and backend <!-- id: c.3 -->
+- [x] Phase 9: Frontend-Backend Live Connection & End-to-End Integration <!-- id: phase-9 -->
+  - [x] 9.1 API client service (`frontend/src/services/api.ts`) connecting to `http://127.0.0.1:8000/api` <!-- id: 9.1 -->
+  - [x] 9.2 Wire live findings & health status to `FindingsTable.tsx` and `Dashboard.tsx` with fallback <!-- id: 9.2 -->
+  - [x] 9.3 Wire scan trigger modal to `POST /api/scan` <!-- id: 9.3 -->
+  - [x] 9.4 Wire analyst lifecycle actions (Triage, Verify, Reject) to `/api/triage/{id}`, `/api/verify/{id}`, `/api/reject/{id}` <!-- id: 9.4 -->
+  - [x] 9.5 Wire live HTML/JSON report download to `GET /api/report/export` <!-- id: 9.5 -->
+  - [x] 9.6 End-to-end verification (Vite + FastAPI) <!-- id: 9.6 -->
+

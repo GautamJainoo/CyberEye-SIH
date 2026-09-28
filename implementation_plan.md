@@ -206,3 +206,24 @@ Tables created using standard library `sqlite3` with foreign keys enabled:
 2. **Scanner Availability**: `gitleaks` (8.30.1) and `osv-scanner` (2.6.0) are installed locally. `semgrep` is being installed via Homebrew. OWASP ZAP runs via Docker container `zaproxy/zap-stable`.
 3. **Target Execution**: Docker Compose will be provided for target execution with dummy environment variables (mocked external APIs) on loopback.
 4. **Existing Frontend**: The existing React frontend in `frontend/` will be preserved and integrated in Phase 5 to serve as the local dashboard over the SQLite data.
+
+---
+
+## 5. Phase 9 Plan: Frontend-Backend Live Connection
+
+### 5.1 Objectives
+- Connect React UI (`frontend/`) to FastAPI REST backend (`backend/src/wmsa/api.py`, `http://127.0.0.1:8000/api`).
+- Replace static mock vulnerability lists with live SQLite findings.
+- Enable interactive scan triggers from UI (`POST /api/scan`).
+- Enable analyst lifecycle actions from UI (`POST /api/triage/{id}`, `POST /api/verify/{id}`, `POST /api/reject/{id}`).
+- Wire report download button directly to `GET /api/report/export?format=html` and `?format=json`.
+- Keep graceful fallback to mock data if backend server is unreachable.
+
+### 5.2 Implementation Tasks
+1. `frontend/src/services/api.ts`: Typed fetch client for health, scope, findings, scan, triage, verify, reject, report export.
+2. `frontend/src/components/FindingsTable.tsx`: Live fetch from `/api/findings` with status filter, severity filter, and search.
+3. `frontend/src/components/ScanModal.tsx`: Real scan trigger via `POST /api/scan` (lite/full profiles) with live progress feedback.
+4. `frontend/src/components/VulnModal.tsx`: Real analyst lifecycle buttons updating backend SQLite state machine.
+5. `frontend/src/components/ReportSummary.tsx`: Real report download triggers.
+6. End-to-end verification against live backend on `127.0.0.1:8000`.
+

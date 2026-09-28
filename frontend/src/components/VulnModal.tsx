@@ -6,11 +6,12 @@ import {
 import { Vulnerability, Status } from '../types'
 import { severityClass, statusClass } from '../utils'
 import { useToast } from './Toast'
+import { triageFinding, verifyFinding, rejectFinding } from '../services/api'
 
 interface Props {
   vuln: Vulnerability | null
   onClose: () => void
-  onStatusChange?: (id: number, newStatus: Status) => void
+  onStatusChange?: (id: number | string, newStatus: Status) => void
 }
 
 export default function VulnModal({ vuln, onClose, onStatusChange }: Props) {
@@ -71,10 +72,39 @@ export default function VulnModal({ vuln, onClose, onStatusChange }: Props) {
     }
   }
 
-  const handleStatusToggle = (newStatus: Status) => {
+  const handleStatusToggle = async (newStatus: Status) => {
     setCurrentStatus(newStatus)
     onStatusChange?.(vuln.id, newStatus)
+
+    if (vuln.backendId) {
+      if (newStatus === 'In Progress') {
+        const ok = await triageFinding(vuln.backendId, 'Analyst marked in progress via dashboard')
+        if (ok) {
+          toast('info', 'Recorded to WMSA DB', 'Finding transitioned to TRIAGED in SQLite audit log')
+          return
+        }
+      } else if (newStatus === 'Fixed') {
+        const ok = await verifyFinding(vuln.backendId, 'Analyst verified remediation via dashboard')
+        if (ok) {
+          toast('success', 'Verified in WMSA DB', 'Finding transitioned to VERIFIED in SQLite audit log')
+          return
+        }
+      }
+    }
     toast('info', 'Status Updated', `Vulnerability marked as "${newStatus}"`)
+  }
+
+  const handleReject = async () => {
+    setCurrentStatus('Fixed')
+    onStatusChange?.(vuln.id, 'Fixed')
+    if (vuln.backendId) {
+      const ok = await rejectFinding(vuln.backendId, 'Rejected by analyst as false positive')
+      if (ok) {
+        toast('info', 'Finding Rejected in WMSA DB', 'Transitioned to REJECTED in SQLite audit log')
+        return
+      }
+    }
+    toast('info', 'Status Updated', 'Vulnerability marked as rejected')
   }
 
   return (
@@ -303,6 +333,15 @@ export default function VulnModal({ vuln, onClose, onStatusChange }: Props) {
                 {st}
               </button>
             ))}
+            {vuln.backendId && (
+              <button
+                onClick={handleReject}
+                className="ml-1 px-2 py-0.5 rounded text-[10px] font-semibold border border-rose-200 dark:border-rose-900/80 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all cursor-pointer"
+                title="Reject as false positive / out of scope"
+              >
+                Reject FP
+              </button>
+            )}
           </div>
 
           <div className="flex gap-2">

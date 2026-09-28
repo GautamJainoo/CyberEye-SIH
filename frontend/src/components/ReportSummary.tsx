@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FileDown, FileText, Code2, Loader2, ShieldCheck, Download } from 'lucide-react'
 import { useToast } from './Toast'
 import { vulnerabilities } from '../data'
+import { getExportUrl } from '../services/api'
 
 interface ReportSummaryProps {
   onSelectSeverity?: (sev: string) => void
@@ -17,9 +18,32 @@ export default function ReportSummary({
   const { toast } = useToast()
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null)
 
-  const handleDownload = (format: 'PDF' | 'JSON' | 'HTML') => {
+  const handleDownload = async (format: 'PDF' | 'JSON' | 'HTML') => {
     setDownloadingFormat(format)
     toast('info', `Preparing ${format} Export`, `Compiling SIH PS 26163 Security Assessment...`)
+
+    if (format === 'JSON' || format === 'HTML') {
+      try {
+        const url = getExportUrl(format.toLowerCase() as 'json' | 'html')
+        const res = await fetch(url, { signal: AbortSignal.timeout(3500) })
+        if (res.ok) {
+          const blob = await res.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = blobUrl
+          a.download = `worldmonitor_security_report.${format.toLowerCase()}`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(blobUrl)
+          setDownloadingFormat(null)
+          toast('success', `${format} Report Exported`, 'Downloaded live WMSA report from local assessment backend.')
+          return
+        }
+      } catch {
+        // Fallback to client-side generation
+      }
+    }
 
     setTimeout(() => {
       let content = ''
