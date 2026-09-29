@@ -1,5 +1,6 @@
+'use client'
+
 import { useState, useMemo } from 'react'
-import { vulnDistribution, zeroVulnDistribution } from '../data'
 import { useToast } from './Toast'
 import { useAppSelector } from '../store'
 
@@ -16,7 +17,6 @@ export default function VulnDistribution({ onSelectSeverity, isZeroData: propZer
   const items = findingsState.items
 
   const activeData = useMemo(() => {
-    if (isZeroData) return zeroVulnDistribution
     let crit = 0, high = 0, med = 0, low = 0
     for (const f of items) {
       const s = (f.severity || '').toUpperCase()
@@ -26,12 +26,11 @@ export default function VulnDistribution({ onSelectSeverity, isZeroData: propZer
       else low++
     }
     const tot = crit + high + med + low
-    if (tot === 0) return vulnDistribution
     return [
-      { label: 'Critical', count: crit, pct: Math.round((crit / tot) * 100), color: '#ef4444' },
-      { label: 'High', count: high, pct: Math.round((high / tot) * 100), color: '#f97316' },
-      { label: 'Medium', count: med, pct: Math.round((med / tot) * 100), color: '#f59e0b' },
-      { label: 'Low', count: low, pct: Math.round((low / tot) * 100), color: '#10b981' },
+      { label: 'Critical', count: crit, pct: tot ? Math.round((crit / tot) * 100) : 0, color: '#ef4444' },
+      { label: 'High', count: high, pct: tot ? Math.round((high / tot) * 100) : 0, color: '#f97316' },
+      { label: 'Medium', count: med, pct: tot ? Math.round((med / tot) * 100) : 0, color: '#f59e0b' },
+      { label: 'Low / Info', count: low, pct: tot ? Math.round((low / tot) * 100) : 0, color: '#10b981' },
     ]
   }, [isZeroData, items])
 
@@ -40,7 +39,7 @@ export default function VulnDistribution({ onSelectSeverity, isZeroData: propZer
   const handleRowClick = (label: string, count: number) => {
     setActiveItem(label)
     const pctStr = total > 0 ? `${Math.round((count / total) * 100)}%` : '0%'
-    toast('info', `${label} Vulnerabilities`, `${count} issues account for ${pctStr} of total risk exposure`)
+    toast('info', `${label} findings`, `${count} finding(s), ${pctStr} of all stored findings`)
     onSelectSeverity?.(label)
   }
 
@@ -89,7 +88,7 @@ export default function VulnDistribution({ onSelectSeverity, isZeroData: propZer
   )
 }
 
-function MiniDonut({ total, data }: { total: number; data: typeof vulnDistribution }) {
+function MiniDonut({ total, data }: { total: number; data: { label: string; count: number; pct: number; color: string }[] }) {
   const R = 30
   const CIRC = 2 * Math.PI * R
   let offset = 0

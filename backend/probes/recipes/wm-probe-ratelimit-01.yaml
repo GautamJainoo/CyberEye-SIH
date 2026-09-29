@@ -19,7 +19,9 @@ steps:
       - "cf-connecting-ip: 198.51.100.1"
       - "cf-connecting-ip: 198.51.100.2"
       - "cf-connecting-ip: 198.51.100.3"
+    expected_status: [200, 301, 302, 403, 429]
     expected_safe: "Without x-wm-edge-proof, cf-connecting-ip is ignored or unproven"
+require_header_any: ["RateLimit-Remaining", "X-RateLimit-Remaining", "Retry-After"]
 expected_safe_behavior: "Direct origin hits cannot bypass rate limit counters by spoofing cf-connecting-ip without Cloudflare transit proof."
 observation_fields:
   - "client_ip_resolution"

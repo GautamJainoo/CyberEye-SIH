@@ -17,7 +17,10 @@ from typing import Any, Dict, List, Optional
 
 import psutil
 
+from wmsa.paths import get_base_dir
+
 from wmsa.adapters.base import (
+    find_binary,
     CandidateFinding,
     PreflightResult,
     RawRun,
@@ -62,7 +65,7 @@ class GitleaksAdapter:
     name: str = "gitleaks"
 
     def __init__(self, binary_path: Optional[str] = None):
-        self.binary_path = binary_path or shutil.which("gitleaks") or "gitleaks"
+        self.binary_path = binary_path or find_binary("gitleaks") or "gitleaks"
 
     def version(self) -> str:
         try:
@@ -96,7 +99,7 @@ class GitleaksAdapter:
         output_dir.mkdir(parents=True, exist_ok=True)
         report_file = output_dir / f"gitleaks_raw_{commit_sha[:8]}.json"
 
-        config_path = Path("rules/gitleaks/worldmonitor.toml")
+        config_path = get_base_dir() / "rules" / "gitleaks" / "worldmonitor.toml"
         cmd = [
             self.binary_path,
             "detect",
@@ -108,28 +111,16 @@ class GitleaksAdapter:
         ]
         if config_path.exists():
             cmd.append(f"--config={config_path}")
+        if not (Path(target_path) / ".git").exists():
+            cmd.append("--no-git")  # plain directory (e.g. calibration fixture)
 
         start_time = datetime.now(timezone.utc).isoformat()
         t0 = time.time()
 
         if not shutil.which(self.binary_path):
-            # Fallback Python-based secret scanner for clean machines without Gitleaks CLI
-            results = self._fallback_scan(target_path, commit_sha)
-            with open(report_file, "w", encoding="utf-8") as f:
-                json.dump(results, f, indent=2)
-            duration = time.time() - t0
-            file_sha = compute_file_sha256(report_file)
-            return RawRun(
-                tool_name=self.name,
-                tool_version=self.version(),
-                command_line=f"internal-gitleaks-engine {target_path}",
-                start_time=start_time,
-                end_time=datetime.now(timezone.utc).isoformat(),
-                exit_code=0,
-                raw_output_path=str(report_file),
-                raw_output_sha256=file_sha,
-                peak_ram_mb=12.0,
-                duration_seconds=duration,
+            raise RuntimeError(
+                "gitleaks binary not found; install the version pinned in tools.lock.json "
+                "(no simulated fallback scan is performed)"
             )
 
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -172,60 +163,6 @@ class GitleaksAdapter:
             peak_ram_mb=peak_ram_mb,
             duration_seconds=duration,
         )
-
-    def _fallback_scan(self, target_path: Path, commit_sha: str) -> List[Dict[str, Any]]:
-        """Scans target files for sensitive tokens, hardcoded secrets, and dummy keys."""
-        results: List[Dict[str, Any]] = []
-        if not target_path.exists():
-            return results
-
-        secret_indicators = [
-            ("UPSTASH_REDIS_REST_TOKEN", "Upstash Redis Token"),
-            ("WM_SESSION_SECRET", "World Monitor Session Secret"),
-            ("RELAY_SHARED_SECRET", "Relay Shared Secret"),
-            ("PRIVATE_KEY", "Private Key Header"),
-            ("api_key", "Generic API Key"),
-            ("dummy_secret", "Hardcoded Secret Token"),
-        ]
-
-        for p in target_path.rglob("*"):
-            if not p.is_file() or p.suffix in (".png", ".jpg", ".ico", ".woff", ".woff2", ".lock"):
-                continue
-            if any(part in p.parts for part in ("node_modules", "dist", ".git", "build")):
-                continue
-            try:
-                content = p.read_text(encoding="utf-8", errors="ignore")
-                lines = content.splitlines()
-                rel_path = str(p.relative_to(target_path))
-
-                for i, line in enumerate(lines, 1):
-                    for ind, desc in secret_indicators:
-                        if ind in line and not line.strip().startswith("//") and not line.strip().startswith("#"):
-                            results.append({
-                                "Description": desc,
-                                "StartLine": i,
-                                "EndLine": i,
-                                "StartColumn": 1,
-                                "EndColumn": len(line),
-                                "Match": redact(line.strip()),
-                                "Secret": "REDACTED",
-                                "File": rel_path,
-                                "SymlinkFile": "",
-                                "Commit": commit_sha or "0d5c618e4307414546a9be84a482ac06b7d56749",
-                                "Entropy": 3.8,
-                                "Author": "Developer",
-                                "Email": "dev@example.com",
-                                "Date": datetime.now(timezone.utc).isoformat(),
-                                "Message": "Target commit",
-                                "Tags": [],
-                                "RuleID": ind.lower().replace("_", "-"),
-                                "Fingerprint": f"{commit_sha}:{rel_path}:{ind}:{i}",
-                            })
-                            break
-            except Exception:
-                continue
-
-        return results
 
 
     def parse(

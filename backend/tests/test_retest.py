@@ -2,7 +2,11 @@
 Unit tests for Patch Management, Branching, and Exact Recipe Retest Workflow.
 """
 
+import json
+import socket
 import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import pytest
 
@@ -15,6 +19,34 @@ from wmsa.normalize import Normalizer
 from wmsa.patching import PatchManager
 from wmsa.retest import RetestEngine
 from wmsa.scope import ScopeManifest
+
+
+@pytest.fixture
+def fake_target():
+    """Hermetic stand-in for the target: unauthenticated /api/user/mcp-quota answers 401, like the real app."""
+    with socket.socket() as probe:
+        if probe.connect_ex(("127.0.0.1", 3000)) == 0:
+            yield  # a real target is already listening on :3000
+            return
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"error": "unauthenticated"}).encode()
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 3000), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield
+    server.shutdown()
+    server.server_close()
 
 
 @pytest.fixture
@@ -146,7 +178,7 @@ def test_patch_proposal_and_branch_application(test_env):
     assert "const vulnerable = false;" in content
 
 
-def test_retest_execution_and_fixed_transition(test_env):
+def test_retest_execution_and_fixed_transition(test_env, fake_target):
     norm = test_env["norm"]
     lc_mgr = test_env["lc_mgr"]
     ev_mgr = test_env["ev_mgr"]
@@ -164,15 +196,15 @@ def test_retest_execution_and_fixed_transition(test_env):
         scope_id="s-1",
         tool="worldmonitor-probes",
         tool_version="1.0.0",
-        rule_id="wm-probe-oauth-grant-01",
-        description="HMAC verification check",
+        rule_id="wm-probe-auth-01",
+        description="Unauthenticated quota access check",
     )
     findings = norm.ingest_findings([cand])
     f_id = findings[0].finding_id
 
     ev_mgr.create_evidence_artifact(
         finding_id=f_id,
-        recipe_id="wm-probe-oauth-grant-01",
+        recipe_id="wm-probe-auth-01",
         artifact_type="telemetry",
         data={"check": "initial"},
     )
@@ -185,7 +217,7 @@ def test_retest_execution_and_fixed_transition(test_env):
     # Run retest with identical recipe
     retest_res = retest_engine.retest_finding(
         finding_id=f_id,
-        recipe_id="wm-probe-oauth-grant-01",
+        recipe_id="wm-probe-auth-01",
         analyst_id="analyst_1",
     )
 
@@ -195,3 +227,40 @@ def test_retest_execution_and_fixed_transition(test_env):
     # Verify finding status is now FIXED
     f_fixed = lc_mgr.get_finding(f_id)
     assert f_fixed.status == "FIXED"
+
+
+def test_offline_only_recipe_cannot_mark_finding_fixed(test_env):
+    """A recipe that never exercises the target must not be able to prove a fix."""
+    norm = test_env["norm"]
+    lc_mgr = test_env["lc_mgr"]
+    ev_mgr = test_env["ev_mgr"]
+    retest_engine = test_env["retest_engine"]
+
+    cand = CandidateFinding(
+        title="HMAC grant token verification",
+        category="authorization",
+        status="CANDIDATE",
+        severity="HIGH",
+        repo="worldmonitor",
+        commit_sha="0d5c618e",
+        build_id="b-1",
+        scope_id="s-1",
+        tool="worldmonitor-probes",
+        tool_version="1.0.0",
+        rule_id="wm-probe-oauth-grant-01",
+        description="HMAC verification check",
+    )
+    f_id = norm.ingest_findings([cand])[0].finding_id
+    ev_mgr.create_evidence_artifact(
+        finding_id=f_id, recipe_id="wm-probe-oauth-grant-01", artifact_type="telemetry", data={"check": "initial"}
+    )
+    lc_mgr.transition(f_id, "TRIAGED", "analyst", "analyst_1", "Initial review")
+    lc_mgr.transition(f_id, "VERIFIED", "analyst", "analyst_1", "Confirmed", impact="Medium")
+    lc_mgr.transition(f_id, "PATCH_PROPOSED", "analyst", "analyst_1", "Proposed")
+    lc_mgr.transition(f_id, "PATCH_APPLIED", "analyst", "analyst_1", "Applied")
+    lc_mgr.transition(f_id, "RETEST_PENDING", "system", "wmsa", "Retest queued")
+
+    res = retest_engine.retest_finding(finding_id=f_id, recipe_id="wm-probe-oauth-grant-01", analyst_id="analyst_1")
+
+    assert res["outcome"] == "INCONCLUSIVE"
+    assert lc_mgr.get_finding(f_id).status != "FIXED"

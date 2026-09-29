@@ -1,8 +1,10 @@
-import { useState, useMemo } from 'react'
+'use client'
+
+import { useState } from 'react'
 import { CheckCircle2, Bug, FileText, Wrench, ArrowUpRight } from 'lucide-react'
 import { useToast } from './Toast'
 import { useAppSelector } from '../store'
-import { ActivityItem } from '../types'
+import { relativeTime, formatDateTime, ActivityEvent } from '../lib/adminApi'
 
 function ActivityIcon({ type }: { type: string }) {
   switch (type) {
@@ -24,52 +26,24 @@ function iconBg(type: string) {
   }
 }
 
-interface RecentActivityProps {
-  isZeroData?: boolean
-}
-
-export default function RecentActivity({ isZeroData: propZero }: RecentActivityProps) {
+export default function RecentActivity() {
   const { toast } = useToast()
   const [showAll, setShowAll] = useState(false)
-  const findingsState = useAppSelector((state) => state.findings)
-  const isZeroData = propZero !== undefined ? propZero : findingsState.isZeroData
-  const findings = findingsState.items
-
-  const activeData: ActivityItem[] = useMemo(() => {
-    if (isZeroData || findings.length === 0) return []
-
-    const items: ActivityItem[] = []
-    findings.slice(0, 8).forEach((f, idx) => {
-      const minutesAgo = (idx + 1) * 3
-      items.push({
-        id: idx + 1,
-        type: f.severity === 'Critical' || f.severity === 'High' ? 'vuln' : 'scan',
-        message: `${f.severity} Alert: ${f.name}`,
-        detail: f.component || 'Target route',
-        timeAgo: `${minutesAgo}m ago`,
-      })
-    })
-
-    items.push({
-      id: 99,
-      type: 'report',
-      message: 'Scope verified on loopback (127.0.0.1:3000)',
-      detail: 'Security baseline initialized',
-      timeAgo: '35m ago',
-    })
-
-    return items
-  }, [isZeroData, findings])
+  // Real events only: scanner runs, analyst lifecycle transitions, blocked actions and web audits.
+  const activeData: (ActivityEvent & { timeAgo: string })[] = useAppSelector((state) => state.summary.data?.activity ?? []).map((e) => ({
+    ...e,
+    timeAgo: relativeTime(e.timestamp),
+  }))
 
   const displayedItems = showAll ? activeData : activeData.slice(0, 4)
 
-  const handleItemClick = (item: ActivityItem) => {
-    toast('info', item.message, `${item.detail || 'Audit entry'} (${item.timeAgo})`)
+  const handleItemClick = (item: ActivityEvent) => {
+    toast('info', item.message, `${item.detail} - ${formatDateTime(item.timestamp)}`)
   }
 
   const handleViewAll = () => {
     setShowAll(!showAll)
-    toast('info', showAll ? 'Filtered Activity' : 'Audit Trail Opened', `Viewing ${activeData.length} recent system events`)
+    
   }
 
   return (
@@ -89,12 +63,12 @@ export default function RecentActivity({ isZeroData: propZero }: RecentActivityP
       <div className="space-y-2.5">
         {activeData.length === 0 ? (
           <div className="py-8 text-center text-slate-400 text-xs font-mono">
-            No activity recorded. Target idle.
+            No activity recorded yet. Run the assessment.
           </div>
         ) : (
           displayedItems.map((item) => (
             <div
-              key={item.id}
+              key={`${item.timestamp}-${item.message}`}
               onClick={() => handleItemClick(item)}
               className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
             >

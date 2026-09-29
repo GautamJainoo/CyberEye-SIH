@@ -145,6 +145,17 @@ def test_api_intel_endpoints(client):
     assert data["query"] == "lodash"
 
 
+def _target_up() -> bool:
+    import socket
+    with socket.socket() as sk:
+        sk.settimeout(1)
+        return sk.connect_ex(("127.0.0.1", 3000)) == 0
+
+
+needs_target = pytest.mark.skipif(not _target_up(), reason="needs the local World Monitor target on :3000")
+
+
+@needs_target
 def test_api_devtools_endpoints(client):
     res_net = client.get("/api/devtools/network")
     assert res_net.status_code == 200
@@ -165,9 +176,10 @@ def test_api_devtools_endpoints(client):
 
     res_cmd = client.post("/api/devtools/console/exec", json={"command": "status"})
     assert res_cmd.status_code == 200
-    assert "Target URL" in res_cmd.json()["output"]
+    assert "Source repo" in res_cmd.json()["output"]
 
 
+@needs_target
 def test_api_network_inspect(client):
     res_inspect = client.get("/api/network/inspect")
     assert res_inspect.status_code == 200
@@ -206,49 +218,12 @@ def test_api_copilot_and_telemetry(client):
 
 
 
-def test_api_custom_target_findings_and_storage(client):
-    # Test any external target URL findings (live scan — returns real findings)
-    res_amz = client.get("/api/findings?target_url=https://www.amazon.in/")
-    assert res_amz.status_code == 200
-    data_amz = res_amz.json()
-    assert data_amz["target"] == "www.amazon.in"
-    # Live scan must return at least some findings (even if target is hardened)
-    # or return 0 if all headers pass — both are valid
-    assert "total" in data_amz
-    assert "findings" in data_amz
-    assert data_amz.get("live_scan") is True
-    # All findings should have required fields
-    for f in data_amz["findings"]:
-        assert "title" in f
-        assert "severity" in f
-        assert "live_scan" in f
-
-    # Test storage audit (cookies from real HTTP response)
-    res_store = client.get("/api/devtools/storage?target_url=https://www.amazon.in/")
-    assert res_store.status_code == 200
-    store_data = res_store.json()
-    # Cookies list should be present (may be empty if no Set-Cookie returned)
-    assert "cookies" in store_data
-    assert store_data.get("live") is True
-    # Each cookie should have the required fields
-    for c in store_data["cookies"]:
-        assert "name" in c
-        assert "httpOnly" in c
-        assert "secure" in c
-        assert "sameSite" in c
-
-    # Test default World Monitor target — serves DB findings
-    res_wm = client.get("/api/findings?target_url=https://worldmonitor.app")
-    assert res_wm.status_code == 200
-    data_wm = res_wm.json()
-    assert data_wm["target"] == "worldmonitor.app"
-    # WM should serve from DB (may be empty if DB not seeded)
-    assert "findings" in data_wm
-
-    # Test security analysis is live
-    res_sec = client.get("/api/devtools/security?target_url=https://httpbin.org")
-    assert res_sec.status_code == 200
-    sec_data = res_sec.json()
-    assert "security_headers" in sec_data
-    assert sec_data.get("live") is True
-    assert "score" in sec_data
+def test_external_targets_are_out_of_scope(client):
+    """No external scanning: every target_url endpoint must refuse non-loopback targets."""
+    for path in ("/api/findings?target_url=https://www.amazon.in/",
+                 "/api/devtools/storage?target_url=https://www.amazon.in/",
+                 "/api/devtools/network?target_url=https://example.com/",
+                 "/api/devtools/security?target_url=https://example.com/"):
+        res = client.get(path)
+        assert res.status_code == 403, path
+        assert "Out of scope" in res.json()["detail"]

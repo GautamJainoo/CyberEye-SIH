@@ -1,7 +1,11 @@
 # World Monitor Gitleaks Configuration and Allowlist
 title = "WMSA Gitleaks Allowlist for World Monitor"
 
-[allowlist]
+# Keep gitleaks' built-in detection rules; this file only adds the allowlist.
+[extend]
+useDefault = true
+
+[[allowlists]]
 description = "Allowlist for synthetic test fixtures and documentation dummy placeholders"
 regexes = [
     '''dummy_synthetic_[a-zA-Z0-9_]+''',
@@ -16,4 +20,22 @@ paths = [
     '''docs/.*''',
     '''target/SELF_HOSTING\.md''',
     '''target/\.env\.example''',
+    # Documentation, tests and published static files hold example values, not live credentials.
+    '''.*\.md$''',
+    '''(^|/)(__tests__|tests?|e2e)/.*''',
+    '''.*\.(test|spec)\.[cm]?[jt]sx?$''',
+    '''(^|/)public/\.well-known/.*''',
+    '''(^|/)blog-site/.*''',
+    '''.*\.example$''',
+    '''.*package-lock\.json$''',
+]
+
+# `generic-api-key` also fires on HTTP header NAMES in API docs ("X-WorldMonitor-Key: <value>").
+[[allowlists]]
+description = "Header-name documentation lines are not secrets"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = [
+    '''(?i)x-(worldmonitor|api|widget|pro)-key''',
+    '''(?i)authorization:\s*bearer\s+(<|\$|\{|your)''',
 ]

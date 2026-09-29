@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import {
   LayoutDashboard, ShieldCheck, Bug, Activity,
@@ -19,9 +21,12 @@ const navItems = [
   { id: 'inspect',     icon: Activity,        label: 'Inspect & Speed' },
   { id: 'scan',        icon: ShieldCheck,     label: 'Security Scan' },
   { id: 'vulns',       icon: Bug,             label: 'Vulnerabilities & PoC' },
-  { id: 'ai-chat',     icon: Bot,             label: 'AI Copilot (RAG)' },
+  { id: 'ai-chat',     icon: Bot,             label: 'AI Copilot' },
   { id: 'reports',     icon: FileText,        label: 'Executive Reports' },
 ]
+
+import Link from 'next/link'
+import { useAppSelector } from '../store'
 
 export default function Sidebar({
   isZeroData = false,
@@ -29,16 +34,15 @@ export default function Sidebar({
   onSelectTab,
   onOpenScanModal,
 }: SidebarProps) {
+  const findingsCount = useAppSelector((st) => st.findings.items.length)
   const { toast } = useToast()
   const { theme, toggleTheme } = useTheme()
-  const [profileOpen, setProfileOpen] = useState(false)
 
-  const handleNavClick = (id: string, label: string) => {
+  const handleNavClick = (id: string, _label: string) => {
     if (id === 'scan') {
       onOpenScanModal?.()
     }
     onSelectTab?.(id)
-    toast('info', `Navigated to ${label}`, `Viewing live telemetry & controls for ${label.toLowerCase()}`)
   }
 
   const handleAskAi = () => {
@@ -48,7 +52,6 @@ export default function Sidebar({
       aiInput.scrollIntoView({ behavior: 'smooth', block: 'center' })
       aiInput.focus()
     }
-    toast('info', 'AI Security Copilot Ready', 'Ask security remediation questions or generate patches')
   }
 
   return (
@@ -86,12 +89,16 @@ export default function Sidebar({
                     ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
                     : 'bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400'
                 }`}>
-                  {isZeroData ? '0' : '5'}
+                  {findingsCount}
                 </span>
               )}
             </button>
           )
         })}
+        <Link href="/admin" className="nav-item w-full text-left mt-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+          <Settings size={15} className="shrink-0" />
+          <span className="text-xs font-medium truncate">Full Admin Panel</span>
+        </Link>
       </nav>
 
       {/* AI Assistant Promo Box */}
@@ -101,7 +108,7 @@ export default function Sidebar({
           <p className="text-xs font-semibold text-teal-900 dark:text-teal-300">AI Security Copilot</p>
         </div>
         <p className="text-[11px] text-teal-700 dark:text-slate-400 leading-relaxed mb-2.5">
-          RAG vulnerability advisory &amp; fix generation
+          Explains findings &amp; drafts fixes from stored scan results
         </p>
         <button
           onClick={handleAskAi}
@@ -133,68 +140,14 @@ export default function Sidebar({
           </button>
         </div>
 
-        <div className="relative">
-          <button
-            onClick={() => setProfileOpen(!profileOpen)}
-            className="w-full px-3 py-3 flex items-center gap-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
-          >
-            <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-950/80 border border-teal-200 dark:border-teal-800 flex items-center justify-center shrink-0">
-              <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">AS</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">Vaibhav Jain</p>
-              <p className="text-[10px] text-slate-400 truncate">Security Analyst (Admin)</p>
-            </div>
-            <ChevronDown
-              size={13}
-              className={`text-slate-400 shrink-0 transition-transform ${profileOpen ? 'rotate-180' : ''}`}
-            />
-          </button>
-
-          {/* User Popover */}
-          {profileOpen && (
-            <div className="absolute bottom-full left-2 right-2 mb-2 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 animate-dropdown-in">
-              <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800">
-                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">Vaibhav Jain</p>
-                <p className="text-[10px] text-slate-400">ayush@worldmonitor.app</p>
-              </div>
-
-              <button
-                onClick={() => {
-                  setProfileOpen(false)
-                  toast('info', 'Profile Settings', 'Managing account permissions and security keys')
-                }}
-                className="w-full px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 text-left cursor-pointer"
-              >
-                <UserCheck size={13} className="text-slate-400" />
-                Account Settings
-              </button>
-
-              <button
-                onClick={() => {
-                  setProfileOpen(false)
-                  toast('info', 'API Key Management', 'Rotated active production JWT keys 4 days ago')
-                }}
-                className="w-full px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 text-left cursor-pointer"
-              >
-                <KeyRound size={13} className="text-slate-400" />
-                API Credentials
-              </button>
-
-              <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-
-              <button
-                onClick={() => {
-                  setProfileOpen(false)
-                  toast('warning', 'Session Ended', 'Logged out of WorldMonitor security portal')
-                }}
-                className="w-full px-3 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-2 text-left cursor-pointer"
-              >
-                <LogOut size={13} />
-                Sign Out
-              </button>
-            </div>
-          )}
+        <div className="px-3 py-3 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-950/80 border border-teal-200 dark:border-teal-800 flex items-center justify-center shrink-0">
+            <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400">SA</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">Security Analyst</p>
+            <p className="text-[10px] text-slate-400 truncate">Local session · loopback only, no login</p>
+          </div>
         </div>
       </div>
     </aside>

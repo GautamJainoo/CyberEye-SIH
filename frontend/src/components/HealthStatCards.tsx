@@ -1,223 +1,150 @@
+'use client'
+
 import type { ComponentType } from 'react'
-import { Activity, Accessibility, ShieldCheck, Search, ArrowUp, ArrowDown } from 'lucide-react'
-import { useToast } from './Toast'
-import { useAppSelector } from '../store'
+import { Activity, Accessibility, ShieldCheck, Search, ArrowUp, ArrowDown, Loader2, Play, Lock } from 'lucide-react'
+import { useAppDispatch, useAppSelector } from '../store'
+import { runWebAuditAsync } from '../store/slices/summarySlice'
+import { formatDateTime, relativeTime } from '../lib/adminApi'
 
 interface HealthStatCardsProps {
   onSelectMetric?: (metricId: string) => void
 }
 
-interface MetricCardData {
+type Cat = 'performance' | 'accessibility' | 'best_practices' | 'seo'
+
+interface Card {
   id: string
   title: string
-  score: number
-  status: string
-  statusColor: string
-  change: string
-  isPositive: boolean
+  subtitle: string
+  score: number | null
+  history: (number | null)[]
   icon: ComponentType<{ size?: number; className?: string }>
   iconBg: string
   iconColor: string
-  strokeColor: string
-  gradientId: string
-  pathD: string
-  areaD: string
-  toastMsg: string
+  stroke: string
+}
+
+function tone(score: number | null) {
+  if (score === null) return { label: 'Not measured', text: 'text-slate-400', dot: 'bg-slate-400' }
+  if (score >= 90) return { label: 'Good', text: 'text-emerald-500 dark:text-emerald-400', dot: 'bg-emerald-500' }
+  if (score >= 50) return { label: 'Needs improvement', text: 'text-amber-500', dot: 'bg-amber-500' }
+  return { label: 'Poor', text: 'text-rose-500', dot: 'bg-rose-500' }
+}
+
+// Real sparkline: one point per stored audit; needs at least two audits to draw a trend.
+function Spark({ values, color }: { values: (number | null)[]; color: string }) {
+  const pts = values.filter((v): v is number => v !== null)
+  if (pts.length < 2) {
+    return <div className="h-14 flex items-end px-5 pb-2 text-[10px] text-slate-400">Run another audit to see a trend</div>
+  }
+  const w = 240
+  const h = 50
+  const step = w / (pts.length - 1)
+  const path = pts.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${(h - (v / 100) * (h - 6) - 3).toFixed(1)}`).join(' ')
+  return (
+    <svg className="w-full h-14 overflow-visible" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <path d={path} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      {pts.map((v, i) => (
+        <circle key={i} cx={i * step} cy={h - (v / 100) * (h - 6) - 3} r="2.4" fill={color} />
+      ))}
+    </svg>
+  )
 }
 
 export default function HealthStatCards({ onSelectMetric }: HealthStatCardsProps) {
-  const { toast } = useToast()
-  const perf = useAppSelector((state) => state.devtools.performance)
-  const findings = useAppSelector((state) => state.findings.items)
+  const dispatch = useAppDispatch()
+  const summary = useAppSelector((s) => s.summary.data)
+  const { auditRunning, auditError } = useAppSelector((s) => s.summary)
 
-  const perfScore = perf?.summary?.overall_score ?? 87
-  const critCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'CRITICAL').length
-  const highCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'HIGH').length
-  const medCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'MEDIUM').length
-  const securityScore = Math.max(15, Math.min(100, 100 - (critCount * 14 + highCount * 7 + medCount * 2)))
+  const audit = summary?.web_audit ?? null
+  const hist = summary?.web_audit_history ?? []
+  const cats = audit?.categories
 
-  const metrics: MetricCardData[] = [
+  const lh = (key: Cat) => ({ score: cats?.[key] ?? null, history: hist.map((h) => h[key]) })
+
+  const cards: Card[] = [
+    { id: 'performance', title: 'Performance', subtitle: 'Lighthouse', ...lh('performance'), icon: Activity, iconBg: 'bg-teal-500/15', iconColor: 'text-teal-600 dark:text-teal-400', stroke: '#14b8a6' },
+    { id: 'accessibility', title: 'Accessibility', subtitle: 'Lighthouse', ...lh('accessibility'), icon: Accessibility, iconBg: 'bg-purple-500/15', iconColor: 'text-purple-600 dark:text-purple-400', stroke: '#a855f7' },
+    { id: 'best_practices', title: 'Best Practices', subtitle: 'Lighthouse', ...lh('best_practices'), icon: ShieldCheck, iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-600 dark:text-emerald-400', stroke: '#10b981' },
+    { id: 'seo', title: 'SEO', subtitle: 'Lighthouse', ...lh('seo'), icon: Search, iconBg: 'bg-amber-500/15', iconColor: 'text-amber-600 dark:text-amber-400', stroke: '#f59e0b' },
     {
-      id: 'performance',
-      title: 'Performance',
-      score: perfScore,
-      status: perfScore >= 85 ? 'Good' : perfScore >= 50 ? 'Needs Improvement' : 'Poor',
-      statusColor: perfScore >= 85 ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500',
-      change: '+2',
-      isPositive: true,
-      icon: Activity,
-      iconBg: 'bg-teal-500/15 dark:bg-teal-500/20',
-      iconColor: 'text-teal-600 dark:text-teal-400',
-      strokeColor: '#14b8a6', // teal-500
-      gradientId: 'perfGrad',
-      // SVG smooth wave paths (viewBox 0 0 240 50)
-      pathD: 'M0,35 C30,38 50,42 80,32 C110,22 130,38 160,25 C190,12 215,22 240,16',
-      areaD: 'M0,35 C30,38 50,42 80,32 C110,22 130,38 160,25 C190,12 215,22 240,16 L240,50 L0,50 Z',
-      toastMsg: `Performance Score: ${perfScore}/100. Fast LCP (${perf?.metrics?.lcp?.value ?? '0.8'}s) and minimal layout shifts.`,
-    },
-    {
-      id: 'accessibility',
-      title: 'Accessibility',
-      score: 89,
-      status: 'Good',
-      statusColor: 'text-emerald-500 dark:text-emerald-400',
-      change: '+1',
-      isPositive: true,
-      icon: Accessibility,
-      iconBg: 'bg-purple-500/15 dark:bg-purple-500/20',
-      iconColor: 'text-purple-600 dark:text-purple-400',
-      strokeColor: '#a855f7', // purple-500
-      gradientId: 'a11yGrad',
-      pathD: 'M0,38 C35,42 60,34 90,36 C120,38 140,22 170,28 C200,34 220,18 240,15',
-      areaD: 'M0,38 C35,42 60,34 90,36 C120,38 140,22 170,28 C200,34 220,18 240,15 L240,50 L0,50 Z',
-      toastMsg: 'Accessibility Score: 89/100. High contrast compliance and clear ARIA roles.',
-    },
-    {
-      id: 'best_practices',
-      title: 'Security & Best Practices',
-      score: securityScore,
-      status: securityScore >= 80 ? 'Good' : securityScore >= 50 ? 'Needs Improvement' : 'Poor',
-      statusColor: securityScore >= 80 ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500',
-      change: securityScore >= 80 ? '+3' : '-5',
-      isPositive: securityScore >= 80,
-      icon: ShieldCheck,
-      iconBg: 'bg-emerald-500/15 dark:bg-emerald-500/20',
-      iconColor: 'text-emerald-600 dark:text-emerald-400',
-      strokeColor: '#10b981', // emerald-500
-      gradientId: 'bestPracticesGrad',
-      pathD: 'M0,32 C30,30 65,40 95,28 C125,16 150,26 180,18 C205,10 225,16 240,12',
-      areaD: 'M0,32 C30,30 65,40 95,28 C125,16 150,26 180,18 C205,10 225,16 240,12 L240,50 L0,50 Z',
-      toastMsg: `Security Score: ${securityScore}/100. ${findings.length} findings tracked across target endpoints.`,
-    },
-    {
-      id: 'seo',
-      title: 'SEO',
-      score: 92,
-      status: 'Good',
-      statusColor: 'text-emerald-500 dark:text-emerald-400',
-      change: '+2',
-      isPositive: true,
-      icon: Search,
-      iconBg: 'bg-amber-500/15 dark:bg-amber-500/20',
-      iconColor: 'text-amber-600 dark:text-amber-400',
-      strokeColor: '#f59e0b', // amber-500
-      gradientId: 'seoGrad',
-      pathD: 'M0,22 C35,18 60,32 90,26 C120,20 145,36 175,34 C205,32 220,42 240,39',
-      areaD: 'M0,22 C35,18 60,32 90,26 C120,20 145,36 175,34 C205,32 220,42 240,39 L240,50 L0,50 Z',
-      toastMsg: 'SEO Score: 92/100. Meta descriptions and structured schemas configured.',
+      id: 'security', title: 'Security posture', subtitle: summary ? `derived from ${summary.findings.total} findings` : 'derived from findings',
+      score: summary ? summary.risk.security_score : null, history: [], icon: Lock, iconBg: 'bg-rose-500/15',
+      iconColor: 'text-rose-600 dark:text-rose-400', stroke: '#f43f5e',
     },
   ]
 
-  const handleCardClick = (m: MetricCardData) => {
-    toast(m.isPositive ? 'info' : 'warning', `${m.title} Telemetry`, m.toastMsg)
-    onSelectMetric?.(m.id)
-  }
-
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-      {metrics.map((m) => {
-        const Icon = m.icon
-        return (
-          <div
-            key={m.id}
-            onClick={() => handleCardClick(m)}
-            className="group relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#0c1322] shadow-sm dark:shadow-md hover:shadow-lg dark:hover:border-slate-700 transition-all duration-200 cursor-pointer flex flex-col justify-between"
-          >
-            {/* Top Row: Icon + Title & Status */}
-            <div className="p-4 sm:p-5 pb-2">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-10 h-10 rounded-full ${m.iconBg} ${m.iconColor} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform`}
-                >
-                  <Icon size={18} />
-                </div>
-                <div>
-                  <h3 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                    {m.title}
-                  </h3>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        m.isPositive ? 'bg-emerald-500' : 'bg-amber-500'
-                      }`}
-                    />
-                    <span className={`text-[11px] font-medium ${m.statusColor}`}>
-                      {m.status}
-                    </span>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <span>
+          {audit
+            ? `Lighthouse ${audit.lighthouse_version} audit of ${audit.url} · ${formatDateTime(audit.finished_at)} (${relativeTime(audit.finished_at)})`
+            : 'No web audit has been run yet. Scores below are measured by Lighthouse - nothing is estimated.'}
+        </span>
+        <button
+          onClick={() => dispatch(runWebAuditAsync())}
+          disabled={auditRunning}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 cursor-pointer"
+        >
+          {auditRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+          {auditRunning ? 'Auditing (about 30-60s)…' : audit ? 'Re-run web audit' : 'Run web audit'}
+        </button>
+      </div>
+      {auditError && <div className="text-xs text-red-500">Web audit failed: {auditError}</div>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        {cards.map((m) => {
+          const Icon = m.icon
+          const t = tone(m.score)
+          const series = m.history.filter((v): v is number => v !== null)
+          const delta = series.length >= 2 ? series[series.length - 1] - series[series.length - 2] : null
+          return (
+            <div
+              key={m.id}
+              onClick={() => onSelectMetric?.(m.id)}
+              className="group relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#0c1322] shadow-sm hover:shadow-lg dark:hover:border-slate-700 transition-all cursor-pointer flex flex-col justify-between"
+            >
+              <div className="p-4 sm:p-5 pb-2">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full ${m.iconBg} ${m.iconColor} flex items-center justify-center shrink-0`}>
+                    <Icon size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 tracking-tight truncate">{m.title}</h3>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />
+                      <span className={`text-[11px] font-medium ${t.text}`}>{t.label}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Middle Row: Score Value + Trend Badge */}
-              <div className="mt-4 flex items-end justify-between">
-                <div className="flex items-baseline gap-0.5">
-                  <span className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                    {m.score}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
-                    /100
-                  </span>
-                </div>
-
-                {/* Trend Badge */}
-                <div
-                  className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                    m.isPositive
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25'
-                      : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25'
-                  }`}
-                >
-                  {m.isPositive ? (
-                    <ArrowUp size={11} className="stroke-[2.5]" />
-                  ) : (
-                    <ArrowDown size={11} className="stroke-[2.5]" />
+                <div className="mt-4 flex items-end justify-between">
+                  <div className="flex items-baseline gap-0.5">
+                    <span className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">{m.score ?? '--'}</span>
+                    <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">/100</span>
+                  </div>
+                  {delta !== null && delta !== 0 && (
+                    <div
+                      className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                        delta > 0
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
+                          : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/25'
+                      }`}
+                      title="Change since the previous audit"
+                    >
+                      {delta > 0 ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
+                      <span>{Math.abs(delta)}</span>
+                    </div>
                   )}
-                  <span>{m.change}</span>
                 </div>
+                <p className="mt-1 text-[10px] text-slate-400 truncate">{m.subtitle}</p>
               </div>
+              {m.history.length > 0 ? <Spark values={m.history} color={m.stroke} /> : <div className="h-14" />}
             </div>
-
-            {/* Bottom: Smooth Sparkline Wave Curve */}
-            <div className="w-full h-14 relative mt-1">
-              <svg
-                className="w-full h-full overflow-visible"
-                viewBox="0 0 240 50"
-                preserveAspectRatio="none"
-              >
-                <defs>
-                  <linearGradient id={m.gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={m.strokeColor} stopOpacity="0.35" />
-                    <stop offset="100%" stopColor={m.strokeColor} stopOpacity="0.0" />
-                  </linearGradient>
-                  <filter id={`glow-${m.id}`} x="-10%" y="-10%" width="120%" height="120%">
-                    <feDropShadow
-                      dx="0"
-                      dy="0"
-                      stdDeviation="2"
-                      floodColor={m.strokeColor}
-                      floodOpacity="0.5"
-                    />
-                  </filter>
-                </defs>
-
-                {/* Area under wave */}
-                <path d={m.areaD} fill={`url(#${m.gradientId})`} />
-
-                {/* Wave Stroke Line */}
-                <path
-                  d={m.pathD}
-                  fill="none"
-                  stroke={m.strokeColor}
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  filter={`url(#glow-${m.id})`}
-                />
-              </svg>
-            </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }

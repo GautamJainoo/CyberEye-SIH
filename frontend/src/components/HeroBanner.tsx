@@ -1,13 +1,16 @@
+'use client'
+
 import { useState } from 'react'
 import { Zap, FileText, Download, ChevronRight, Clock, CheckCircle2, Globe } from 'lucide-react'
 import { useToast } from './Toast'
+import { useAppSelector } from '../store'
 
 interface HeroBannerProps {
   onRunCheck?: () => void
   onViewReport?: () => void
   onDownloadPdf?: () => void
   lastCheckedTime?: string
-  overallScore?: number
+  overallScore?: number | null
   targetUrl?: string
 }
 
@@ -15,12 +18,15 @@ export default function HeroBanner({
   onRunCheck,
   onViewReport,
   onDownloadPdf,
-  lastCheckedTime = '28 Sep 2026, 12:52 PM',
-  overallScore = 92,
-  targetUrl = 'https://worldmonitor.app',
+  lastCheckedTime = 'Never',
+  overallScore = null,
+  targetUrl = 'http://127.0.0.1:3000',
 }: HeroBannerProps) {
   const { toast } = useToast()
-  const [isRunningCheck, setIsRunningCheck] = useState(false)
+  const heroFindings = useAppSelector((st) => st.findings.items)
+  const heroCrit = heroFindings.filter((f) => (f.severity || '').toUpperCase() === 'CRITICAL').length
+  const heroHeadline = heroFindings.length === 0 ? 'No findings yet' : heroCrit > 0 ? `${heroCrit} critical issue${heroCrit > 1 ? 's' : ''} need attention` : `${heroFindings.length} candidate findings to review`
+  const summary = useAppSelector((st) => st.summary.data)
 
   const domain = (() => {
     try {
@@ -32,15 +38,8 @@ export default function HeroBanner({
   })()
 
 
-  const handleRunCheck = () => {
-    setIsRunningCheck(true)
-    toast('info', 'Running Full Check...', 'Scanning all health metrics, security posture & performance indicators.')
-    setTimeout(() => {
-      setIsRunningCheck(false)
-      onRunCheck?.()
-      toast('success', 'Health Check Complete', 'All vitals and system telemetry refreshed successfully.')
-    }, 1200)
-  }
+  // Opens the real scan pipeline; nothing is simulated here.
+  const handleRunCheck = () => onRunCheck?.()
 
   const handleViewReport = () => {
     onViewReport?.()
@@ -48,18 +47,26 @@ export default function HeroBanner({
     if (targetEl) {
       targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-    toast('info', 'Report View', 'Navigated to detailed metrics & diagnostics analysis.')
   }
 
   const handleDownloadPdf = () => {
     onDownloadPdf?.()
-    toast('success', 'Generating PDF Report', 'Health & Security Executive Summary PDF is being downloaded.')
   }
 
   // Calculate circular SVG stroke dash
   const radius = 46
   const circumference = 2 * Math.PI * radius
-  const strokeDashoffset = circumference - (overallScore / 100) * circumference
+  const strokeDashoffset = circumference - ((overallScore ?? 0) / 100) * circumference
+  const scoreLabel =
+    overallScore === null ? 'Not measured' : overallScore >= 90 ? 'Excellent' : overallScore >= 75 ? 'Good' : overallScore >= 50 ? 'Needs work' : 'Poor'
+  const scoreTone =
+    overallScore === null
+      ? 'bg-slate-500/15 border-slate-500/30 text-slate-600 dark:text-slate-300'
+      : overallScore >= 75
+        ? 'bg-emerald-500/15 dark:bg-emerald-500/20 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+        : overallScore >= 50
+          ? 'bg-amber-500/15 border-amber-500/30 text-amber-700 dark:text-amber-400'
+          : 'bg-red-500/15 border-red-500/30 text-red-700 dark:text-red-400'
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
@@ -183,18 +190,18 @@ export default function HeroBanner({
           {/* Left Textual Details */}
           <div className="space-y-3 max-w-xl">
             <div className="flex items-center gap-1.5 text-sm font-medium text-teal-800/80 dark:text-teal-300/90">
-              <span>Good Morning, Vaibhav Jain</span>
-              <span className="inline-block animate-bounce">👋</span>
+              <span>Security assessment summary</span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl lg:text-[2rem] font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight">
-              Your Health Looks Good Today!
+              {heroHeadline}
             </h1>
 
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-normal leading-relaxed max-w-lg">
-              Live real-time security assessment active for{' '}
-              <strong className="font-semibold">{domain}</strong>. Scanning SSL,
-              security headers, cookies, and OWASP Top 10 vulnerabilities.
+              Assessment of <strong className="font-semibold">{domain}</strong>:{' '}
+              {summary
+                ? `${summary.findings.total} unverified candidate finding(s) from ${summary.coverage.tools_run.length} of ${summary.coverage.tools_expected.length} scanners.`
+                : 'waiting for the assessment backend.'}
             </p>
 
             {/* Last Checked & Target Status Pills */}
@@ -205,7 +212,7 @@ export default function HeroBanner({
               </div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-500/10 dark:bg-teal-400/10 backdrop-blur-md border border-teal-300 dark:border-teal-500/30 text-xs font-medium text-teal-800 dark:text-teal-200 shadow-sm">
                 <Globe size={13} className="text-sky-600 dark:text-sky-400" />
-                <span>Auditing: <strong className="font-semibold">{domain}</strong></span>
+                <span>Target: <strong className="font-semibold">{domain}</strong></span>
               </div>
             </div>
           </div>
@@ -257,7 +264,7 @@ export default function HeroBanner({
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none">
                 <div className="flex items-baseline">
                   <span className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                    {overallScore}
+                    {overallScore ?? '--'}
                   </span>
                   <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                     /100
@@ -269,11 +276,11 @@ export default function HeroBanner({
             {/* Score labels below */}
             <div className="mt-2 text-center">
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                Overall Health Score
+                Overall score (measured)
               </p>
-              <div className="mt-1.5 inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 border border-emerald-500/30 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+              <div className={`mt-1.5 inline-flex items-center gap-1 px-3 py-0.5 rounded-full border text-[11px] font-semibold ${scoreTone}`}>
                 <CheckCircle2 size={11} />
-                <span>Excellent</span>
+                <span>{scoreLabel}</span>
               </div>
             </div>
           </div>
@@ -298,19 +305,18 @@ export default function HeroBanner({
             {/* Action 1: Run Full Check */}
             <button
               onClick={handleRunCheck}
-              disabled={isRunningCheck}
-              className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/60 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/30 hover:border-emerald-200 dark:hover:border-emerald-800/60 transition-all duration-200 text-left group cursor-pointer"
+                            className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/60 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/30 hover:border-emerald-200 dark:hover:border-emerald-800/60 transition-all duration-200 text-left group cursor-pointer"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <CheckCircle2 size={18} className={isRunningCheck ? 'animate-spin' : ''} />
+                  <CheckCircle2 size={18} />
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                    Run Full Check
+                    Run full assessment
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Scan all metrics
+                    All scanners + web audit
                   </p>
                 </div>
               </div>
@@ -349,10 +355,10 @@ export default function HeroBanner({
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                    Download PDF
+                    Download report
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Save your report
+                    PDF from stored findings
                   </p>
                 </div>
               </div>
@@ -364,10 +370,10 @@ export default function HeroBanner({
         {/* Small security verification note */}
         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            System Live & Ready
+            <span className={`w-1.5 h-1.5 rounded-full ${summary?.target.healthy ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+            {summary ? (summary.target.healthy ? 'Target online' : 'Target offline') : 'Backend unreachable'}
           </span>
-          <span className="font-mono text-[10px]">v2.4 Pro</span>
+          <span className="font-mono text-[10px]">{summary ? `${summary.coverage.tools_run.length}/${summary.coverage.tools_expected.length} scanners run` : ''}</span>
         </div>
       </div>
     </div>

@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useMemo } from 'react'
 import { Vulnerability, Severity, Status } from '../types'
 import { severityClass, statusClass } from '../utils'
@@ -17,7 +19,6 @@ interface Props {
   searchQuery?: string
   selectedSeverity?: Severity | 'All'
   isZeroData?: boolean
-  onLoadSample?: () => void
   onTriggerScan?: () => void
 }
 
@@ -25,7 +26,6 @@ export default function FindingsTable({
   searchQuery: propSearchQuery,
   selectedSeverity: propSelectedSeverity,
   isZeroData: propIsZeroData,
-  onLoadSample,
   onTriggerScan,
 }: Props) {
   const { toast } = useToast()
@@ -71,7 +71,7 @@ export default function FindingsTable({
           (v.cve && v.cve.toLowerCase().includes(q))
         )
       })
-      .sort((a, b) => (sortAsc ? a.cvss - b.cvss : b.cvss - a.cvss))
+      .sort((a, b) => (sortAsc ? (a.cvss ?? -1) - (b.cvss ?? -1) : (b.cvss ?? -1) - (a.cvss ?? -1)))
   }, [activeVulnList, severityFilter, statusFilter, activeSearch, localSearch, sortAsc])
 
   const displayedVulns = showAll ? filteredVulns : filteredVulns.slice(0, 6)
@@ -82,7 +82,7 @@ export default function FindingsTable({
       return
     }
     const headers = 'ID,Name,Severity,Component,CVSS,Status,CVE\n'
-    const rows = filteredVulns.map(v => `"${v.id}","${v.name}","${v.severity}","${v.component}","${v.cvss}","${v.status}","${v.cve || ''}"`).join('\n')
+    const rows = filteredVulns.map(v => `"${v.id}","${v.name}","${v.severity}","${v.component}","${v.cvss ?? ''}","${v.status}","${v.cve || ''}"`).join('\n')
     const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -221,30 +221,17 @@ export default function FindingsTable({
               <ShieldCheck size={26} />
             </div>
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {isZeroData ? 'Zero Vulnerabilities Detected' : 'No matching vulnerabilities'}
+              {isZeroData ? 'No findings stored yet' : 'No matching findings'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1 mb-4 leading-relaxed">
               {isZeroData
-                ? 'Current security audit reflects 0 active vulnerabilities or CVE exposures. System is in a clean baseline state.'
+                ? 'Nothing has been scanned yet, so no conclusion about the target can be drawn. Run the assessment to populate this table.'
                 : 'No findings match the selected filters or search query.'}
             </p>
             {isZeroData && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onTriggerScan}
-                  className="btn-primary text-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <RefreshCw size={12} /> Run Target Scan
-                </button>
-                {onLoadSample && (
-                  <button
-                    onClick={onLoadSample}
-                    className="btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    Load Live Findings
-                  </button>
-                )}
-              </div>
+              <button onClick={onTriggerScan} className="btn-primary text-xs flex items-center gap-1.5 cursor-pointer">
+                <RefreshCw size={12} /> Run assessment
+              </button>
             )}
           </div>
         ) : (
@@ -285,7 +272,7 @@ export default function FindingsTable({
                     <span className="text-xs text-slate-500 dark:text-slate-400 font-mono text-[11px]">{v.component}</span>
                   </td>
                   <td className="px-2 py-3">
-                    <span className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">{v.cvss}</span>
+                    <span className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">{v.cvss ?? '--'}</span>
                   </td>
                   <td className="px-2 py-3">
                     <span className={statusClass(v.status)}>{v.status}</span>

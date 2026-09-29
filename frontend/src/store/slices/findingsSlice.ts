@@ -26,7 +26,7 @@ const initialState: FindingsState = {
   severityFilter: 'All',
   statusFilter: 'All',
   searchQuery: '',
-  isZeroData: false,
+  isZeroData: true, // derived: true until real findings are loaded
   isLoading: false,
   isLiveBackend: false,
   error: null,
@@ -129,12 +129,6 @@ export const findingsSlice = createSlice({
     setSearchQuery: (state, action: PayloadAction<string>) => {
       state.searchQuery = action.payload
     },
-    toggleZeroData: (state) => {
-      state.isZeroData = !state.isZeroData
-    },
-    setZeroData: (state, action: PayloadAction<boolean>) => {
-      state.isZeroData = action.payload
-    },
   },
   extraReducers: (builder) => {
     builder
@@ -146,6 +140,7 @@ export const findingsSlice = createSlice({
       .addCase(fetchFindingsAsync.fulfilled, (state, action) => {
         state.isLoading = false
         state.items = action.payload
+        state.isZeroData = action.payload.length === 0
         state.isLiveBackend = true
       })
       .addCase(fetchFindingsAsync.rejected, (state, action) => {
@@ -163,8 +158,6 @@ export const {
   setSeverityFilter,
   setStatusFilter,
   setSearchQuery,
-  toggleZeroData,
-  setZeroData,
 } = findingsSlice.actions
 
 export default findingsSlice.reducer

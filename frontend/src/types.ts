@@ -9,12 +9,12 @@ export interface Vulnerability {
   description: string
   severity: Severity
   component: string
-  cvss: number
+  cvss: number | null
   status: Status
   rawStatus?: string
   cve?: string
   cwe?: string
-  toolDetected?: 'Semgrep (SAST)' | 'Gitleaks (Secrets)' | 'OSV-Scanner (SCA)' | 'OWASP ZAP (DAST)' | string
+  toolDetected?: string
   stepsToReproduce?: string[]
   pocPayload?: string
   businessImpact?: string
@@ -29,6 +29,7 @@ export interface RadarDataPoint {
   label: string
   value: number
   maxValue: number
+  findings?: number
 }
 
 export interface ActivityItem {

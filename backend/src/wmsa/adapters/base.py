@@ -92,6 +92,16 @@ class CandidateFinding(BaseModel):
         return self.stable_fingerprint
 
 
+def find_binary(name: str) -> Optional[str]:
+    """Locate a scanner binary on PATH, else in the running venv or ~/.local/bin."""
+    import os
+    import shutil
+    import sys
+
+    extra = os.pathsep.join([str(Path(sys.executable).parent), str(Path.home() / ".local" / "bin")])
+    return shutil.which(name) or shutil.which(name, path=extra)
+
+
 def compute_file_sha256(file_path: Path) -> str:
     h = hashlib.sha256()
     with open(file_path, "rb") as f:

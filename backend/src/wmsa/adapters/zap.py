@@ -30,6 +30,13 @@ from wmsa.target import TargetManager
 from wmsa.paths import get_base_dir
 
 
+def _free_port() -> int:
+    import socket
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 class ZAPAdapter:
     name: str = "zap"
 
@@ -119,6 +126,12 @@ class ZAPAdapter:
         )
         return rendered
 
+    @staticmethod
+    def _timeout_seconds(profile_config: Dict[str, Any]) -> int:
+        zap_cfg = (profile_config or {}).get("zap", {})
+        minutes = zap_cfg.get("max_spider_duration_mins", 2) + zap_cfg.get("max_scan_duration_mins", 5) + 3
+        return int(minutes * 60)
+
     def run(
         self,
         target_path: Path,
@@ -174,22 +187,29 @@ class ZAPAdapter:
             "-v", f"{plan_file.parent}:/zap/wrk:ro",
             "-v", f"{output_dir}:/zap/reports:rw",
             self.docker_image,
-            "zap.sh", "-cmd", "-autorun", f"/zap/wrk/{plan_file.name}",
+            # --network=host shares the host's ports, so ZAP's default proxy port (8080)
+            # can collide with other local services; always bind a free one.
+            "zap.sh", "-cmd", "-port", str(_free_port()), "-autorun", f"/zap/wrk/{plan_file.name}",
         ]
 
         t0 = time.time()
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=self._timeout_seconds(profile_config))
             exit_code = res.returncode
+            zap_output = (res.stdout or "") + (res.stderr or "")
         except Exception as e:
             exit_code = 1
+            zap_output = f"ZAP did not complete: {e}"
+
+        # A ZAP run that never started or produced no report must not look like "0 alerts".
+        if not report_path.exists() or "Failed to start the main proxy" in zap_output:
+            raise RuntimeError(
+                "ZAP scan failed (no report produced): "
+                + " | ".join(zap_output.strip().splitlines()[-3:])
+            )
 
         duration = time.time() - t0
         end_time = datetime.now(timezone.utc).isoformat()
-
-        if not report_path.exists():
-            with open(report_path, "w", encoding="utf-8") as fp:
-                json.dump({"site": []}, fp)
 
         sha = compute_file_sha256(report_path)
 
@@ -251,45 +271,51 @@ class ZAPAdapter:
                 desc = alert_item.get("desc", alert_name)
                 solution = alert_item.get("solution", "")
 
-                instances = alert_item.get("instances", [])
-                for inst in instances:
-                    uri = inst.get("uri", "")
-                    method = inst.get("method", "GET")
-                    param = inst.get("param", "")
-                    evidence = inst.get("evidence", "")
+                # One finding per ZAP alert; list the affected URLs instead of flooding the
+                # dashboard with one near-identical finding per instance.
+                usable = [
+                    inst for inst in alert_item.get("instances", [])
+                    if not any(inst.get("uri", "").lower().endswith(ext) for ext in static_exts)
+                ]
+                if not usable:
+                    continue
+                first = usable[0]
+                uri = first.get("uri", "")
+                method = first.get("method", "GET")
+                param = first.get("param", "")
+                evidence = first.get("evidence", "")
+                alert_lower = alert_name.lower()
+                if any(w in alert_lower for w in ["header", "cookie", "cors", "tls", "cache", "clickjacking", "csp", "content security"]):
+                    category = "configuration"
+                else:
+                    category = "dast_io"
+                others = "\n".join(f"  - {i.get('method', 'GET')} {i.get('uri', '')}" for i in usable[:8])
+                more = f"\n  ... and {len(usable) - 8} more" if len(usable) > 8 else ""
 
-                    # Applicability filter: skip injection alerts on static assets
-                    if any(uri.lower().endswith(ext) for ext in static_exts):
-                        continue
-
-                    # Category determination
-                    alert_lower = alert_name.lower()
-                    if any(w in alert_lower for w in ["header", "cookie", "cors", "tls", "cache", "clickjacking"]):
-                        category = "configuration"
-                    else:
-                        category = "dast_io"
-
-                    finding = CandidateFinding(
-                        title=f"DAST: {alert_name}",
-                        category=category,
-                        status="CANDIDATE",  # STRICT: never above CANDIDATE
-                        severity=severity,
-                        confidence_label="UNVERIFIED",
-                        repo=repo,
-                        commit_sha=commit_sha,
-                        build_id=build_id,
-                        scope_id=scope_id,
-                        tool=self.name,
-                        tool_version=raw.tool_version,
-                        rule_id=str(plugin_id),
-                        endpoint=uri,
-                        method=method,
-                        cwe=[cwe_id] if cwe_id != "CWE-0" else [],
-                        description=f"{desc}\n\nEndpoint: {method} {uri}\nParam: {param}\nEvidence: {evidence[:200]}",
-                        raw_result_ref=f"{raw.raw_output_path}#{plugin_id}:{uri}",
-                        remediation_proposal=solution or "Apply defense-in-depth headers or input validation.",
-                    )
-                    finding.compute_fingerprint()
-                    findings.append(finding)
+                finding = CandidateFinding(
+                    title=f"DAST: {alert_name}",
+                    category=category,
+                    status="CANDIDATE",  # STRICT: never above CANDIDATE
+                    severity=severity,
+                    confidence_label="UNVERIFIED",
+                    repo=repo,
+                    commit_sha=commit_sha,
+                    build_id=build_id,
+                    scope_id=scope_id,
+                    tool=self.name,
+                    tool_version=raw.tool_version,
+                    rule_id=str(plugin_id),
+                    endpoint=uri,
+                    method=method,
+                    cwe=[cwe_id] if cwe_id != "CWE-0" else [],
+                    description=(
+                        f"{desc}\n\nAffected URLs ({len(usable)}):\n{others}{more}\n"
+                        f"Param: {param}\nEvidence: {evidence[:200]}"
+                    ),
+                    raw_result_ref=f"{raw.raw_output_path}#{plugin_id}:{uri}",
+                    remediation_proposal=solution or "Apply defense-in-depth headers or input validation.",
+                )
+                finding.compute_fingerprint()
+                findings.append(finding)
 
         return findings

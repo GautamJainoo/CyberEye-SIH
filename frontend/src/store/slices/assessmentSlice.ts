@@ -22,9 +22,9 @@ export interface AssessmentState {
 }
 
 const initialState: AssessmentState = {
-  targetUrl: 'https://worldmonitor.app',
+  targetUrl: 'http://127.0.0.1:3000',
   activeTab: 'dashboard',
-  lastScanTime: '28 Sep 2026, 12:52 PM',
+  lastScanTime: '',
   scanModalOpen: false,
   isScanning: false,
   backendHealth: null,

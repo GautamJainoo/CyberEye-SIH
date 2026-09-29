@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { Bot, Send, Sparkles, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { useToast } from './Toast'
@@ -51,7 +53,7 @@ export default function AiAssistant() {
           </div>
           <div>
             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">AI Security Copilot</h2>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500">Context-aware remediation engine</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">Answers grounded in your stored findings (Groq)</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -159,11 +161,10 @@ export default function AiAssistant() {
       {/* Quick Prompts (Image 2 Box 3 Architecture Queries) */}
       <div className="flex gap-1.5 flex-wrap">
         {[
-          'Run a security scan on my code',
-          'What vulnerabilities were found?',
-          'Explain the SQL injection issue',
-          'How to fix this issue?',
-          'Give a summary report',
+          'What are the most severe findings?',
+          'Which findings are likely false positives?',
+          'How do I fix the top finding?',
+          'Summarize the assessment',
         ].map((chip) => (
           <button
             key={chip}
@@ -183,7 +184,7 @@ export default function AiAssistant() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleAsk() }}
-          placeholder="Ask copilot for code fixes or advice..."
+          placeholder="Ask about a finding, its cause or its fix..."
           className="w-full pl-3 pr-8 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition"
         />
         <button

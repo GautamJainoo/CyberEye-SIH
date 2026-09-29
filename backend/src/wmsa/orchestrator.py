@@ -9,13 +9,15 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import yaml
 
 from wmsa.adapters.base import CandidateFinding, RawRun
+from wmsa.adapters.gemini_review import GeminiReviewAdapter
 from wmsa.adapters.gitleaks import GitleaksAdapter
 from wmsa.adapters.osv import OSVScannerAdapter
 from wmsa.adapters.probes import ProbesAdapter
@@ -49,7 +51,7 @@ class Orchestrator:
 
     def load_profile(self, profile_name: str = "lite") -> Dict[str, Any]:
         if not self.profiles_path.exists():
-            return {"tools": ["gitleaks", "osv", "semgrep", "probes"], "enable_zap": False}
+            return {"tools": ["review", "semgrep", "gitleaks", "osv", "probes"], "enable_zap": False}
         with open(self.profiles_path, "r", encoding="utf-8") as fp:
             data = yaml.safe_load(fp)
         return data.get("profiles", {}).get(profile_name, {})
@@ -59,6 +61,7 @@ class Orchestrator:
         profile_name: str = "lite",
         selected_tools: Optional[List[str]] = None,
         output_base_dir: Optional[Path] = None,
+        progress: Optional[Callable[[str, str, str], None]] = None,
     ) -> Dict[str, Any]:
         """
         Executes an end-to-end security assessment scan.
@@ -69,7 +72,7 @@ class Orchestrator:
         t0 = time.time()
 
         profile = self.load_profile(profile_name)
-        active_tools = selected_tools or profile.get("tools", ["gitleaks", "osv", "semgrep", "probes"])
+        active_tools = selected_tools or profile.get("tools", ["review", "semgrep", "gitleaks", "osv", "probes"])
 
         evidence_dir = output_base_dir or (self.base_dir / "evidence" / scan_id)
         evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -96,10 +99,12 @@ class Orchestrator:
             )
 
         raw_runs: List[RawRun] = []
+        tool_errors: Dict[str, str] = {}
         all_candidates: List[CandidateFinding] = []
 
         # Tool mapping
         adapters: Dict[str, Any] = {
+            "review": GeminiReviewAdapter(base_dir=self.base_dir),
             "gitleaks": GitleaksAdapter(),
             "osv": OSVScannerAdapter(),
             "semgrep": SemgrepAdapter(),
@@ -109,46 +114,51 @@ class Orchestrator:
 
         custom_semgrep_dir = self.base_dir / "rules" / "semgrep" / "worldmonitor"
 
-        for tool_name in active_tools:
-            if tool_name not in adapters:
-                continue
+        def execute(tool_name: str):
+            """Run + parse one tool. Thread-safe: touches no database."""
             adapter = adapters[tool_name]
-
-            # Run adapter safely
+            if progress:
+                progress(tool_name, "running", "")
+            kwargs = dict(
+                target_path=target_path,
+                output_dir=evidence_dir,
+                commit_sha=commit_sha,
+                build_id=build_id,
+                scope_id=self.manifest.scope_id,
+                profile_config=profile,
+            )
+            if tool_name == "semgrep":
+                kwargs["custom_rules_dir"] = custom_semgrep_dir
             try:
-                if tool_name == "semgrep":
-                    run = adapter.run(
-                        target_path=target_path,
-                        output_dir=evidence_dir,
-                        commit_sha=commit_sha,
-                        build_id=build_id,
-                        scope_id=self.manifest.scope_id,
-                        profile_config=profile,
-                        custom_rules_dir=custom_semgrep_dir,
-                    )
-                elif tool_name == "zap":
-                    run = adapter.run(
-                        target_path=target_path,
-                        output_dir=evidence_dir,
-                        commit_sha=commit_sha,
-                        build_id=build_id,
-                        scope_id=self.manifest.scope_id,
-                        profile_config=profile,
-                    )
-                else:
-                    run = adapter.run(
-                        target_path=target_path,
-                        output_dir=evidence_dir,
-                        commit_sha=commit_sha,
-                        build_id=build_id,
-                        scope_id=self.manifest.scope_id,
-                        profile_config=profile,
-                    )
-                raw_runs.append(run)
+                run = adapter.run(**kwargs)
+                candidates = adapter.parse(run, target_path)
             except Exception as e:
-                continue
+                if progress:
+                    progress(tool_name, "failed", str(e)[:300])
+                return tool_name, None, [], str(e)
+            if progress:
+                progress(tool_name, "done", f"{len(candidates)} candidate(s) in {run.duration_seconds:.0f}s")
+            return tool_name, run, candidates, None
 
-            # Record run in tool_runs table
+        # Static tools and the slow ZAP scan run concurrently; the probes run afterwards so their
+        # 3s request timeouts are not distorted by ZAP's active-scan load on the target.
+        selected = [t for t in active_tools if t in adapters]
+        phase1 = [t for t in selected if t != "probes"]
+        phase2 = [t for t in selected if t == "probes"]
+        results: Dict[str, Any] = {}
+        if phase1:
+            with ThreadPoolExecutor(max_workers=len(phase1)) as pool:
+                for res in pool.map(execute, phase1):
+                    results[res[0]] = res
+        for t in phase2:
+            results[t] = execute(t)
+
+        for tool_name in selected:  # keep the caller's tool order for recording
+            _, run, candidates, error = results[tool_name]
+            if error or run is None:
+                tool_errors[tool_name] = error or "unknown error"
+                continue
+            raw_runs.append(run)
             run_id = f"run-{uuid.uuid4().hex[:8]}"
             with self.db.get_connection() as conn:
                 conn.execute(
@@ -161,22 +171,11 @@ class Orchestrator:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        run_id,
-                        scan_id,
-                        run.tool_name,
-                        run.tool_version,
-                        run.command_line,
-                        run.exit_code,
-                        run.raw_output_path,
-                        run.raw_output_sha256,
-                        run.peak_ram_mb,
-                        run.duration_seconds,
-                        datetime.now(timezone.utc).isoformat(),
+                        run_id, scan_id, run.tool_name, run.tool_version, run.command_line,
+                        run.exit_code, run.raw_output_path, run.raw_output_sha256, run.peak_ram_mb,
+                        run.duration_seconds, datetime.now(timezone.utc).isoformat(),
                     ),
                 )
-
-            # Parse findings
-            candidates = adapter.parse(run, target_path)
             all_candidates.extend(candidates)
 
         # Ingest and deduplicate findings into DB
@@ -189,6 +188,7 @@ class Orchestrator:
         metrics = {
             "duration_seconds": total_duration,
             "tools_executed": [r.tool_name for r in raw_runs],
+            "tools_failed": tool_errors,
             "total_candidates_found": len(all_candidates),
             "deduplicated_findings_count": len(ingested),
         }
@@ -196,10 +196,10 @@ class Orchestrator:
             conn.execute(
                 """
                 UPDATE scans
-                SET status = 'COMPLETED', end_time = ?, metrics_json = ?
+                SET status = ?, end_time = ?, metrics_json = ?
                 WHERE scan_id = ?
                 """,
-                (end_time, json.dumps(metrics), scan_id),
+                ("COMPLETED_WITH_ERRORS" if tool_errors else "COMPLETED", end_time, json.dumps(metrics), scan_id),
             )
 
         self.db.log_audit_event(
@@ -212,7 +212,8 @@ class Orchestrator:
         return {
             "scan_id": scan_id,
             "profile": profile_name,
-            "status": "COMPLETED",
+            "status": "COMPLETED_WITH_ERRORS" if tool_errors else "COMPLETED",
+            "tool_errors": tool_errors,
             "duration_seconds": total_duration,
             "tool_runs": [r.model_dump() for r in raw_runs],
             "findings_count": len(ingested),
