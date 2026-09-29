@@ -74,11 +74,11 @@ flowchart TD
 
 ```text
 Secure-Lens-SIH/
-├── frontend/                   # React + Vite + Tailwind CSS Dashboard UI
+├── frontend/                   # Next.js (React) + Tailwind CSS dashboard, admin panel and finding pages
 │   ├── src/                    # UI Components, pages, Inspect suite, telemetry
 │   ├── public/                 # Static assets
 │   ├── package.json            # Frontend dependencies
-│   └── vite.config.ts          # Vite build configuration
+│   └── next.config.mjs         # Next.js configuration
 │
 ├── backend/                    # Core Python WMSA Platform & Engine
 │   ├── config/                 # Scope manifests (scope.yaml) & scan profiles
@@ -86,7 +86,7 @@ Secure-Lens-SIH/
 │   ├── probes/                 # WM-specific safe probe recipes and review notes
 │   ├── rules/                  # Curated Semgrep & ZAP security rules
 │   ├── src/wmsa/               # Core engine (adapters, lifecycle, DB, intel, LLM)
-│   ├── tests/                  # Pytest suite (56 tests) & calibration fixture
+│   ├── tests/                  # Pytest suite (79 tests) & calibration fixture
 │   ├── target/                 # Pinned World Monitor checkout (127.0.0.1:3000)
 │   ├── pyproject.toml          # Backend package specifications
 │   ├── requirements.txt        # Python dependency manifest
