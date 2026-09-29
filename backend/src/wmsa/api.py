@@ -26,6 +26,7 @@ from wmsa.retest import RetestEngine
 from wmsa.scope import ScopeGuard, load_scope_manifest
 from wmsa.target import TargetManager
 from wmsa.devtools import DevToolsEngine
+from wmsa.seed import seed_worldmonitor_findings
 
 api_app = FastAPI(
     title="WMSA Local Assessment API",
@@ -109,6 +110,8 @@ def api_health():
     manifest = load_scope_manifest()
     with db.get_connection() as conn:
         count = conn.execute("SELECT count(*) as c FROM findings").fetchone()["c"]
+        if count == 0:
+            count = seed_worldmonitor_findings(db)
     return {
         "status": "online",
         "repo_url": manifest.repo_url,
@@ -118,6 +121,12 @@ def api_health():
         "environment": "local-isolated",
         "findings_count": count,
     }
+
+
+@api_app.post("/api/db/seed")
+def seed_db_endpoint():
+    count = seed_worldmonitor_findings(db)
+    return {"status": "seeded", "findings_count": count}
 
 
 @api_app.post("/api/target/configure")
@@ -164,7 +173,22 @@ def list_findings(
     status: Optional[str] = None,
     category: Optional[str] = None,
     severity: Optional[str] = None,
+    target_url: Optional[str] = None,
 ):
+    if target_url:
+        from wmsa.live_scanner import _normalize_url
+        clean_url, domain = _normalize_url(target_url)
+        if not devtools_engine._is_worldmonitor(domain):
+            custom_findings = devtools_engine.get_custom_target_findings(target_url)
+            filtered = custom_findings
+            if status:
+                filtered = [f for f in filtered if f.get("status", "").upper() == status.upper()]
+            if category:
+                filtered = [f for f in filtered if f.get("category", "").lower() == category.lower()]
+            if severity:
+                filtered = [f for f in filtered if f.get("severity", "").upper() == severity.upper()]
+            return {"total": len(filtered), "findings": filtered, "target": domain, "live_scan": True}
+
     query = "SELECT * FROM findings WHERE 1=1"
     params = []
     if status:
@@ -198,7 +222,7 @@ def list_findings(
             ).fetchone()["c"]
             findings.append(data)
 
-    return {"total": len(findings), "findings": findings}
+    return {"total": len(findings), "findings": findings, "target": "worldmonitor.app"}
 
 
 @api_app.get("/api/findings/{finding_id}")
@@ -357,8 +381,8 @@ def get_devtools_performance(target_url: str = "http://127.0.0.1:3000"):
 
 
 @api_app.get("/api/devtools/storage")
-def get_devtools_storage():
-    return devtools_engine.get_storage_audit()
+def get_devtools_storage(target_url: str = "http://127.0.0.1:3000"):
+    return devtools_engine.get_storage_audit(target_url)
 
 
 @api_app.post("/api/devtools/console/exec")
@@ -387,16 +411,23 @@ def get_network_inspect(target_url: str = "http://127.0.0.1:3000"):
         }
         for r in requests
     ]
-    avg_latency = sum(r["time"] for r in requests) // len(requests) if requests else 45
+    avg_latency = sum(r["time"] for r in requests) // len(requests) if requests else 0
+    # Get real perf data for summary
+    perf = devtools_engine.get_performance_telemetry(target_url)
+    perf_summary = perf.get("summary", {})
+    perf_metrics = perf.get("metrics", {})
+    ttfb_val = perf_metrics.get("ttfb", {}).get("value")
+    total_kb = perf_summary.get("total_transfer_kb")
     summary = {
         "averageLatency": f"{avg_latency} ms",
-        "ttfb": "42 ms",
+        "ttfb": f"{ttfb_val} ms" if ttfb_val is not None else "--",
         "totalRequests": len(requests),
-        "totalTransferSize": "485 KB",
-        "uncompressedSize": "1.3 MB",
-        "httpProtocol": "HTTP/2 (Loopback)",
-        "dnsLookup": "1.2 ms",
-        "sslHandshake": "3.5 ms",
+        "totalTransferSize": f"{total_kb:.1f} KB" if total_kb else "--",
+        "uncompressedSize": "--",
+        "httpProtocol": perf.get("metrics", {}).get("ttfb", {}).get("status", "--"),
+        "dnsLookup": "--",
+        "sslHandshake": "--",
+        "live": True,
     }
     return {"summary": summary, "metrics": metrics}
 

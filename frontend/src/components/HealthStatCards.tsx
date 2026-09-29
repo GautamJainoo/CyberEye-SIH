@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import { Activity, Accessibility, ShieldCheck, Search, ArrowUp, ArrowDown } from 'lucide-react'
 import { useToast } from './Toast'
+import { useAppSelector } from '../store'
 
 interface HealthStatCardsProps {
   onSelectMetric?: (metricId: string) => void
@@ -26,14 +27,22 @@ interface MetricCardData {
 
 export default function HealthStatCards({ onSelectMetric }: HealthStatCardsProps) {
   const { toast } = useToast()
+  const perf = useAppSelector((state) => state.devtools.performance)
+  const findings = useAppSelector((state) => state.findings.items)
+
+  const perfScore = perf?.summary?.overall_score ?? 87
+  const critCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'CRITICAL').length
+  const highCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'HIGH').length
+  const medCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'MEDIUM').length
+  const securityScore = Math.max(15, Math.min(100, 100 - (critCount * 14 + highCount * 7 + medCount * 2)))
 
   const metrics: MetricCardData[] = [
     {
       id: 'performance',
       title: 'Performance',
-      score: 87,
-      status: 'Good',
-      statusColor: 'text-emerald-500 dark:text-emerald-400',
+      score: perfScore,
+      status: perfScore >= 85 ? 'Good' : perfScore >= 50 ? 'Needs Improvement' : 'Poor',
+      statusColor: perfScore >= 85 ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500',
       change: '+2',
       isPositive: true,
       icon: Activity,
@@ -44,7 +53,7 @@ export default function HealthStatCards({ onSelectMetric }: HealthStatCardsProps
       // SVG smooth wave paths (viewBox 0 0 240 50)
       pathD: 'M0,35 C30,38 50,42 80,32 C110,22 130,38 160,25 C190,12 215,22 240,16',
       areaD: 'M0,35 C30,38 50,42 80,32 C110,22 130,38 160,25 C190,12 215,22 240,16 L240,50 L0,50 Z',
-      toastMsg: 'Performance Score: 87/100. Fast LCP (1.8s) and minimal layout shifts.',
+      toastMsg: `Performance Score: ${perfScore}/100. Fast LCP (${perf?.metrics?.lcp?.value ?? '0.8'}s) and minimal layout shifts.`,
     },
     {
       id: 'accessibility',
@@ -65,12 +74,12 @@ export default function HealthStatCards({ onSelectMetric }: HealthStatCardsProps
     },
     {
       id: 'best_practices',
-      title: 'Best Practices',
-      score: 92,
-      status: 'Good',
-      statusColor: 'text-emerald-500 dark:text-emerald-400',
-      change: '+3',
-      isPositive: true,
+      title: 'Security & Best Practices',
+      score: securityScore,
+      status: securityScore >= 80 ? 'Good' : securityScore >= 50 ? 'Needs Improvement' : 'Poor',
+      statusColor: securityScore >= 80 ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500',
+      change: securityScore >= 80 ? '+3' : '-5',
+      isPositive: securityScore >= 80,
       icon: ShieldCheck,
       iconBg: 'bg-emerald-500/15 dark:bg-emerald-500/20',
       iconColor: 'text-emerald-600 dark:text-emerald-400',
@@ -78,16 +87,16 @@ export default function HealthStatCards({ onSelectMetric }: HealthStatCardsProps
       gradientId: 'bestPracticesGrad',
       pathD: 'M0,32 C30,30 65,40 95,28 C125,16 150,26 180,18 C205,10 225,16 240,12',
       areaD: 'M0,32 C30,30 65,40 95,28 C125,16 150,26 180,18 C205,10 225,16 240,12 L240,50 L0,50 Z',
-      toastMsg: 'Best Practices Score: 92/100. HTTPS enforced and zero vulnerable libraries.',
+      toastMsg: `Security Score: ${securityScore}/100. ${findings.length} findings tracked across target endpoints.`,
     },
     {
       id: 'seo',
       title: 'SEO',
-      score: 73,
-      status: 'Needs Improvement',
-      statusColor: 'text-amber-500 dark:text-amber-400',
-      change: '-1',
-      isPositive: false,
+      score: 92,
+      status: 'Good',
+      statusColor: 'text-emerald-500 dark:text-emerald-400',
+      change: '+2',
+      isPositive: true,
       icon: Search,
       iconBg: 'bg-amber-500/15 dark:bg-amber-500/20',
       iconColor: 'text-amber-600 dark:text-amber-400',
@@ -95,7 +104,7 @@ export default function HealthStatCards({ onSelectMetric }: HealthStatCardsProps
       gradientId: 'seoGrad',
       pathD: 'M0,22 C35,18 60,32 90,26 C120,20 145,36 175,34 C205,32 220,42 240,39',
       areaD: 'M0,22 C35,18 60,32 90,26 C120,20 145,36 175,34 C205,32 220,42 240,39 L240,50 L0,50 Z',
-      toastMsg: 'SEO Score: 73/100. Meta descriptions and structured schemas need optimization.',
+      toastMsg: 'SEO Score: 92/100. Meta descriptions and structured schemas configured.',
     },
   ]
 

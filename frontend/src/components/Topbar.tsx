@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   Bell, Search, RefreshCw, Globe, Copy, Check,
-  ChevronDown, X, Sun, Moon, Database, ShieldCheck
+  ChevronDown, X, Sun, Moon, ShieldCheck, Activity
 } from 'lucide-react'
 import { useToast } from './Toast'
 import { useTheme } from '../context/ThemeContext'
@@ -17,10 +17,11 @@ interface TopbarProps {
 }
 
 const PRESET_TARGETS = [
-  { label: 'Production Web', url: 'https://worldmonitor.app', status: 'Online' },
+  { label: 'World Monitor (Core SIH)', url: 'https://worldmonitor.app', status: 'In Scope' },
+  { label: 'Amazon India', url: 'https://www.amazon.in/', status: 'Monitored' },
+  { label: 'Amazon Global', url: 'https://www.amazon.com/', status: 'Monitored' },
   { label: 'API Gateway', url: 'https://api.worldmonitor.app', status: 'Online' },
   { label: 'Auth & IAM', url: 'https://auth.worldmonitor.app', status: 'Protected' },
-  { label: 'Staging Environment', url: 'https://staging.worldmonitor.app', status: 'Testing' },
 ]
 
 export default function Topbar({
@@ -40,6 +41,15 @@ export default function Topbar({
   const [inputUrl, setInputUrl] = useState(targetUrl)
   const [presetsOpen, setPresetsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const targetDomain = (() => {
+    try {
+      const u = targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`
+      return new URL(u).hostname.replace(/^www\./, '')
+    } catch {
+      return targetUrl
+    }
+  })()
 
   useEffect(() => {
     setInputUrl(targetUrl)
@@ -126,7 +136,7 @@ export default function Topbar({
 
       {/* Middle & Right: Actions Bar */}
       <div className="flex items-center gap-2.5 flex-wrap justify-end">
-        {/* Data Zero / Sample Toggle */}
+        {/* Target Audit Status & Baseline Indicator */}
         <button
           onClick={onToggleZeroData}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer shadow-sm ${
@@ -134,17 +144,17 @@ export default function Topbar({
               ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
               : 'bg-sky-50 dark:bg-sky-950/40 border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300'
           }`}
-          title={isZeroData ? "Switch to Sample Populated Data" : "Switch to Zero Data State"}
+          title={isZeroData ? "Switch to Live Audit Findings" : "Switch to Clean Baseline State"}
         >
           {isZeroData ? (
             <>
               <ShieldCheck size={13} className="text-emerald-600 dark:text-emerald-400" />
-              <span>Data: <strong className="font-semibold">Zero State (0)</strong></span>
+              <span>Audit: <strong className="font-semibold">Baseline Clean (0)</strong></span>
             </>
           ) : (
             <>
-              <Database size={13} className="text-sky-600 dark:text-sky-400" />
-              <span>Data: <strong className="font-semibold">Sample (12)</strong></span>
+              <Activity size={13} className="text-sky-600 dark:text-sky-400 animate-pulse" />
+              <span>Scanning: <strong className="font-semibold">{targetDomain}</strong></span>
             </>
           )}
         </button>

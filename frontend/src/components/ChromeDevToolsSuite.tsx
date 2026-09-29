@@ -47,6 +47,15 @@ export default function ChromeDevToolsSuite({
   const perfData = devtoolsState.performance
   const storageData = devtoolsState.storage
 
+  const targetDomain = (() => {
+    try {
+      const u = targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`
+      return new URL(u).hostname.replace(/^www\./, '')
+    } catch {
+      return targetUrl
+    }
+  })()
+
   // Memory tab states
   const [memoryMode, setMemoryMode] = useState<'heap' | 'timeline' | 'sampling' | 'detached'>('heap')
   const [isSnapshotting, setIsSnapshotting] = useState(false)
@@ -60,122 +69,8 @@ export default function ChromeDevToolsSuite({
   // Console tab states
   const [consoleInput, setConsoleInput] = useState('')
 
-  // Network Requests Dataset matching Amazon & World Monitor Inspect screenshots
-  const networkRequests = [
-    {
-      id: 'req-1',
-      name: 'worldmonitor.app',
-      status: 200,
-      type: 'Doc',
-      initiator: 'other',
-      size: '85.2 kB',
-      time: 38,
-      waterfallPct: 15,
-      offsetPct: 0,
-      isVuln: false,
-    },
-    {
-      id: 'req-2',
-      name: '/api/search?q=\' OR 1=1--',
-      status: 200,
-      type: 'Fetch/XHR',
-      initiator: 'index:142',
-      size: '12.4 kB',
-      time: 85,
-      waterfallPct: 35,
-      offsetPct: 18,
-      isVuln: true,
-      vulnTag: 'SQLi CVE-2024-22252',
-    },
-    {
-      id: 'req-3',
-      name: '/api/users/1',
-      status: 200,
-      type: 'Fetch/XHR',
-      initiator: 'users.js:68',
-      size: '8.2 kB',
-      time: 92,
-      waterfallPct: 38,
-      offsetPct: 25,
-      isVuln: true,
-      vulnTag: 'IDOR CWE-639',
-    },
-    {
-      id: 'req-4',
-      name: 'index-C69G0sdD.css',
-      status: 200,
-      type: 'CSS',
-      initiator: '(index):18',
-      size: '68.1 kB',
-      time: 14,
-      waterfallPct: 8,
-      offsetPct: 10,
-      isVuln: false,
-    },
-    {
-      id: 'req-5',
-      name: 'index-ClX8h1ji.js',
-      status: 200,
-      type: 'JS',
-      initiator: '(index):24',
-      size: '385 kB',
-      time: 42,
-      waterfallPct: 22,
-      offsetPct: 12,
-      isVuln: false,
-    },
-    {
-      id: 'req-6',
-      name: 'hero.png',
-      status: 200,
-      type: 'Img',
-      initiator: 'style.css:44',
-      size: '145 kB',
-      time: 22,
-      waterfallPct: 12,
-      offsetPct: 20,
-      isVuln: false,
-    },
-    {
-      id: 'req-7',
-      name: 'favicon.svg',
-      status: 200,
-      type: 'Img',
-      initiator: '(index):8',
-      size: '(disk cache)',
-      time: 1,
-      waterfallPct: 2,
-      offsetPct: 8,
-      isVuln: false,
-    },
-    {
-      id: 'req-8',
-      name: '/api/auth/reset',
-      status: 200,
-      type: 'Fetch/XHR',
-      initiator: 'auth.js:210',
-      size: '4.1 kB',
-      time: 68,
-      waterfallPct: 28,
-      offsetPct: 30,
-      isVuln: true,
-      vulnTag: 'Missing Rate Limit',
-    },
-    {
-      id: 'req-9',
-      name: 'wss://worldmonitor.app/telemetry',
-      status: 101,
-      type: 'WS',
-      initiator: 'pubsub:88',
-      size: '1.2 kB',
-      time: 5,
-      waterfallPct: 90,
-      offsetPct: 5,
-      isVuln: false,
-    },
-  ]
-
-  const requests = devtoolsState.requests.length > 0 ? devtoolsState.requests : networkRequests
+  // Live Network Requests driven strictly from backend devtools telemetry
+  const requests = devtoolsState.requests
 
   useEffect(() => {
     dispatch(fetchDevToolsAllAsync(targetUrl))
@@ -479,7 +374,7 @@ export default function ChromeDevToolsSuite({
                   Your local LCP value of <strong className="text-emerald-500">{perfData?.metrics?.lcp?.value ? `${perfData.metrics.lcp.value} s` : '0.78 s'}</strong> is good.
                 </p>
                 <p className="text-[10px] font-mono text-sky-600 dark:text-sky-400 mt-2 bg-sky-50 dark:bg-sky-950/40 p-1.5 rounded border border-sky-200 dark:border-sky-900/50 truncate">
-                  LCP element: img.a-worldmonitor-hero-image
+                  LCP element: img on {targetDomain} (client-side measurement required)
                 </p>
               </div>
 
@@ -640,7 +535,7 @@ export default function ChromeDevToolsSuite({
                   <span>3.4 MB</span>
                 </div>
                 <div className="flex justify-between py-0.5">
-                  <span>www.worldmonitor.app: warmup.html</span>
+                  <span>{targetDomain}: warmup.html</span>
                   <span>26.1 MB</span>
                 </div>
                 <div className="flex justify-between py-0.5">
@@ -652,7 +547,7 @@ export default function ChromeDevToolsSuite({
                   <span>7.3 MB</span>
                 </div>
                 <div className="flex justify-between py-0.5 text-emerald-500 font-medium">
-                  <span>aax-worldmonitor-metric.com: iu3</span>
+                  <span>telemetry.{targetDomain}: iu3</span>
                   <span>5.0 MB (↓ 5.2 MB/s)</span>
                 </div>
               </div>
@@ -781,30 +676,34 @@ export default function ChromeDevToolsSuite({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px]">
-                    {(storageData?.cookies && storageData.cookies.length > 0 ? storageData.cookies : [
-                      { name: 'wm_session', domain: '.worldmonitor.app', httpOnly: true, secure: true, sameSite: 'Lax', status: 'VALID' },
-                      { name: 'csrf_token', domain: '.worldmonitor.app', httpOnly: false, secure: true, sameSite: 'None', status: 'VULNERABLE (CWE-352)' },
-                      { name: 'wm_theme', domain: 'worldmonitor.app', httpOnly: false, secure: false, sameSite: 'Lax', status: 'PASS' },
-                    ]).map((c, idx) => (
-                      <tr key={idx} className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 ${!c.httpOnly && c.name.includes('csrf') ? 'bg-rose-500/5' : ''}`}>
-                        <td className="py-2 px-2 font-bold text-sky-600 dark:text-sky-400">{c.name}</td>
-                        <td className="py-2 px-2 text-slate-400">{c.domain}</td>
-                        <td className={`py-2 px-2 font-bold ${c.httpOnly ? 'text-emerald-500' : 'text-rose-500'}`}>
-                          {c.httpOnly ? '✓' : '✗'}
-                        </td>
-                        <td className={`py-2 px-2 font-bold ${c.secure ? 'text-emerald-500' : 'text-amber-500'}`}>
-                          {c.secure ? '✓' : '✗'}
-                        </td>
-                        <td className="py-2 px-2 text-slate-500">{c.sameSite}</td>
-                        <td className="py-2 px-2">
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                            c.status.includes('VULNERABLE') ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' : 'text-slate-400'
-                          }`}>
-                            {c.status}
-                          </span>
+                    {storageData?.cookies && storageData.cookies.length > 0 ? (
+                      storageData.cookies.map((c: any, idx: number) => (
+                        <tr key={idx} className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 ${!c.httpOnly && c.name.includes('csrf') ? 'bg-rose-500/5' : ''}`}>
+                          <td className="py-2 px-2 font-bold text-sky-600 dark:text-sky-400">{c.name}</td>
+                          <td className="py-2 px-2 text-slate-400">{c.domain}</td>
+                          <td className={`py-2 px-2 font-bold ${c.httpOnly ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {c.httpOnly ? '✓' : '✗'}
+                          </td>
+                          <td className={`py-2 px-2 font-bold ${c.secure ? 'text-emerald-500' : 'text-amber-500'}`}>
+                            {c.secure ? '✓' : '✗'}
+                          </td>
+                          <td className="py-2 px-2 text-slate-500">{c.sameSite}</td>
+                          <td className="py-2 px-2">
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                              c.status.includes('Warning') ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' : 'text-slate-400'
+                            }`}>
+                              {c.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="py-4 px-2 text-center text-slate-400 text-[11px]">
+                          {storageData ? '— No Set-Cookie headers detected in response —' : 'Scan a target to inspect cookies'}
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -865,22 +764,26 @@ export default function ChromeDevToolsSuite({
                 <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   Active Service Workers
                 </h4>
-                {(storageData?.service_workers && storageData.service_workers.length > 0 ? storageData.service_workers : [
-                  { scope: 'https://worldmonitor.app/', script: 'https://worldmonitor.app/sw.js', status: 'Activated and running', cache_storage_kb: 492 }
-                ]).map((sw, idx) => (
-                  <div key={idx} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 font-mono text-xs">
-                    <div className="flex items-center gap-2 text-emerald-500 font-bold">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>{sw.status}</span>
+                {storageData?.service_workers && storageData.service_workers.length > 0 ? (
+                  storageData.service_workers.map((sw: any, idx: number) => (
+                    <div key={idx} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 font-mono text-xs">
+                      <div className="flex items-center gap-2 text-emerald-500 font-bold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>{sw.status}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Script: {sw.script}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Scope: {sw.scope} {sw.cache_storage_kb ? `• Cache: ${sw.cache_storage_kb} KB` : ''}
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Script: {sw.script}
-                    </p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">
-                      Scope: {sw.scope} • Cache: {sw.cache_storage_kb} KB
-                    </p>
+                  ))
+                ) : (
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-center text-slate-400 text-[11px]">
+                    {storageData ? '— No service worker detected in page source —' : 'Scan a target to detect service workers'}
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
@@ -915,11 +818,11 @@ export default function ChromeDevToolsSuite({
                 <div className="px-2 py-1 text-slate-600 dark:text-slate-400 space-y-1 truncate text-[11px]">
                   <div className="flex items-center gap-1.5 truncate">
                     <Lock size={11} className="text-emerald-500 shrink-0" />
-                    <span className="truncate">https://api.worldmonitor.app</span>
+                    <span className="truncate">https://api.{targetDomain}</span>
                   </div>
                   <div className="flex items-center gap-1.5 truncate">
                     <Lock size={11} className="text-emerald-500 shrink-0" />
-                    <span className="truncate">https://cdn.worldmonitor.app</span>
+                    <span className="truncate">https://cdn.{targetDomain}</span>
                   </div>
                 </div>
               </div>
@@ -1080,13 +983,13 @@ export default function ChromeDevToolsSuite({
               <div>
                 <span className="text-slate-400">Common Name (CN):</span>
                 <p className="font-semibold text-slate-800 dark:text-slate-200">
-                  {securityData?.certificate?.subject || '*.worldmonitor.app'}
+                  {securityData?.certificate?.subject || `*.${targetDomain}`}
                 </p>
               </div>
               <div>
                 <span className="text-slate-400">Issuer:</span>
                 <p className="font-semibold text-slate-800 dark:text-slate-200">
-                  {securityData?.certificate?.issuer || 'Amazon RSA 2048 M01'}
+                  {securityData?.certificate?.issuer || '--'}
                 </p>
               </div>
               <div>
@@ -1104,7 +1007,7 @@ export default function ChromeDevToolsSuite({
               <div>
                 <span className="text-slate-400">Subject Alternative Names (SAN):</span>
                 <p className="text-[10px] text-slate-500 break-all">
-                  {securityData?.certificate?.san?.join(', ') || 'worldmonitor.app, *.worldmonitor.app, api.worldmonitor.app'}
+                  {securityData?.certificate?.san?.join(', ') || `${targetDomain}, *.${targetDomain}, api.${targetDomain}`}
                 </p>
               </div>
             </div>

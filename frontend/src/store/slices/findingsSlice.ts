@@ -1,6 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import { Vulnerability, Severity, Status } from '../../types'
-import { vulnerabilities as sampleVulns } from '../../data'
 import {
   fetchFindings,
   mapBackendFinding,
@@ -22,7 +21,7 @@ export interface FindingsState {
 }
 
 const initialState: FindingsState = {
-  items: sampleVulns,
+  items: [],
   selectedFinding: null,
   severityFilter: 'All',
   statusFilter: 'All',
@@ -36,9 +35,9 @@ const initialState: FindingsState = {
 // Background Thunks
 export const fetchFindingsAsync = createAsyncThunk(
   'findings/fetchFindings',
-  async (_, { rejectWithValue }) => {
+  async (targetUrl: string | undefined, { rejectWithValue }) => {
     try {
-      const res = await fetchFindings()
+      const res = await fetchFindings(targetUrl)
       if (res && res.findings && res.findings.length > 0) {
         return res.findings.map((f, i) => mapBackendFinding(f, i))
       }
@@ -146,12 +145,8 @@ export const findingsSlice = createSlice({
       })
       .addCase(fetchFindingsAsync.fulfilled, (state, action) => {
         state.isLoading = false
-        if (action.payload.length > 0) {
-          state.items = action.payload
-          state.isLiveBackend = true
-        } else {
-          state.isLiveBackend = false
-        }
+        state.items = action.payload
+        state.isLiveBackend = true
       })
       .addCase(fetchFindingsAsync.rejected, (state, action) => {
         state.isLoading = false

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Zap, FileText, Download, ChevronRight, Clock, CheckCircle2 } from 'lucide-react'
+import { Zap, FileText, Download, ChevronRight, Clock, CheckCircle2, Globe } from 'lucide-react'
 import { useToast } from './Toast'
 
 interface HeroBannerProps {
@@ -8,6 +8,7 @@ interface HeroBannerProps {
   onDownloadPdf?: () => void
   lastCheckedTime?: string
   overallScore?: number
+  targetUrl?: string
 }
 
 export default function HeroBanner({
@@ -16,9 +17,20 @@ export default function HeroBanner({
   onDownloadPdf,
   lastCheckedTime = '28 Sep 2026, 12:52 PM',
   overallScore = 92,
+  targetUrl = 'https://worldmonitor.app',
 }: HeroBannerProps) {
   const { toast } = useToast()
   const [isRunningCheck, setIsRunningCheck] = useState(false)
+
+  const domain = (() => {
+    try {
+      const u = targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`
+      return new URL(u).hostname.replace(/^www\./, '')
+    } catch {
+      return targetUrl
+    }
+  })()
+
 
   const handleRunCheck = () => {
     setIsRunningCheck(true)
@@ -180,14 +192,20 @@ export default function HeroBanner({
             </h1>
 
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-normal leading-relaxed max-w-lg">
-              Keep up the good work! Your vitals are within normal range. Stay consistent!
+              Live real-time security assessment active for{' '}
+              <strong className="font-semibold">{domain}</strong>. Scanning SSL,
+              security headers, cookies, and OWASP Top 10 vulnerabilities.
             </p>
 
-            {/* Last Checked Status Pill */}
-            <div className="pt-1">
+            {/* Last Checked & Target Status Pills */}
+            <div className="pt-1 flex items-center gap-2 flex-wrap">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 dark:bg-slate-900/60 backdrop-blur-md border border-teal-200 dark:border-teal-500/25 text-xs text-slate-700 dark:text-teal-200 shadow-sm">
                 <Clock size={13} className="text-teal-600 dark:text-teal-400" />
                 <span>Last checked: {lastCheckedTime}</span>
+              </div>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-500/10 dark:bg-teal-400/10 backdrop-blur-md border border-teal-300 dark:border-teal-500/30 text-xs font-medium text-teal-800 dark:text-teal-200 shadow-sm">
+                <Globe size={13} className="text-sky-600 dark:text-sky-400" />
+                <span>Auditing: <strong className="font-semibold">{domain}</strong></span>
               </div>
             </div>
           </div>

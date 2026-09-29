@@ -60,7 +60,7 @@ export const fetchDevToolsAllAsync = createAsyncThunk(
         fetchDevToolsNetwork(targetUrl),
         fetchDevToolsSecurity(targetUrl),
         fetchDevToolsPerformance(targetUrl),
-        fetchDevToolsStorage(),
+        fetchDevToolsStorage(targetUrl),
       ])
       return { net, sec, perf, store }
     } catch (err: any) {

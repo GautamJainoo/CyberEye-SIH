@@ -47,13 +47,20 @@ export default function Dashboard() {
   const { targetUrl, activeTab, lastScanTime, scanModalOpen } = useAppSelector(
     (state) => state.assessment
   )
-  const { isZeroData, searchQuery, severityFilter } = useAppSelector(
+  const { isZeroData, searchQuery, severityFilter, items: findings } = useAppSelector(
     (state) => state.findings
   )
+  const perf = useAppSelector((state) => state.devtools.performance)
+  const perfScore = perf?.summary?.overall_score ?? 87
+  const critCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'CRITICAL').length
+  const highCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'HIGH').length
+  const medCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'MEDIUM').length
+  const securityScore = isZeroData ? 100 : Math.max(15, Math.min(100, 100 - (critCount * 14 + highCount * 7 + medCount * 2)))
+  const overallScore = isZeroData ? 100 : Math.round((perfScore + securityScore) / 2)
 
   useEffect(() => {
     // Initial global background telemetry bootstrap
-    dispatch(fetchFindingsAsync())
+    dispatch(fetchFindingsAsync(targetUrl))
     dispatch(fetchHealthAsync())
     dispatch(fetchDevToolsAllAsync(targetUrl))
     dispatch(fetchRecommendationsAsync())
@@ -63,8 +70,12 @@ export default function Dashboard() {
   }, [dispatch, targetUrl])
 
   const handleScan = (url: string) => {
-    dispatch(setLastScanTime('28 Sep 2026, 12:52 PM'))
+    dispatch(setZeroData(false))
+    dispatch(setLastScanTime(new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })))
     dispatch(setTargetUrl(url))
+    dispatch(fetchFindingsAsync(url))
+    dispatch(fetchDevToolsAllAsync(url))
+    dispatch(fetchNetworkInspectAsync(url))
   }
 
   const handleToggleZeroData = () => {
@@ -72,10 +83,10 @@ export default function Dashboard() {
     const next = !isZeroData
     toast(
       next ? 'info' : 'success',
-      next ? 'Zero Data Mode Activated' : 'Sample Data Loaded',
+      next ? 'Baseline Mode Activated' : 'Live Findings Restored',
       next
         ? 'Displaying clean baseline state with 0 active vulnerabilities'
-        : 'Loaded 12 sample CVE findings and threat telemetry'
+        : 'Displaying active security findings and real-time threat telemetry'
     )
   }
 
@@ -202,6 +213,7 @@ export default function Dashboard() {
               <>
                 {/* 1. Hero Welcome Banner (Score 92/100) + Quick Actions */}
                 <HeroBanner
+                  targetUrl={targetUrl}
                   onRunCheck={() => dispatch(setScanModalOpen(true))}
                   onViewReport={() => {
                     const tableEl = document.getElementById('findings-table-section')
@@ -215,7 +227,7 @@ export default function Dashboard() {
                     )
                   }
                   lastCheckedTime={lastScanTime}
-                  overallScore={92}
+                  overallScore={overallScore}
                 />
 
                 {/* 2. 4-Column Metric Cards with Glowing Sparklines */}

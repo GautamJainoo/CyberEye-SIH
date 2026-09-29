@@ -20,64 +20,9 @@ export interface CopilotState {
   error: string | null
 }
 
-const defaultRecs: CopilotRecommendation[] = [
-  {
-    id: 1,
-    finding_id: 'WM-REC-01',
-    priority: 'Critical Priority',
-    color: 'text-red-600 dark:text-red-400',
-    bg: 'bg-red-50 dark:bg-red-950/30',
-    border: 'border-red-200 dark:border-red-900/50',
-    dot: 'bg-red-500',
-    title: 'SQL Injection in /api/search.',
-    impact: 'Full database exfiltration possible.',
-    fix: 'Use parameterized queries with prepared statements.',
-    codeSnippet: 'const rows = await db.query("SELECT * FROM items WHERE title = $1", [param]);',
-  },
-  {
-    id: 2,
-    finding_id: 'WM-REC-02',
-    priority: 'High Priority',
-    color: 'text-orange-600 dark:text-orange-400',
-    bg: 'bg-orange-50 dark:bg-orange-950/30',
-    border: 'border-orange-200 dark:border-orange-900/50',
-    dot: 'bg-orange-500',
-    title: 'Detected insecure JWT storage in localStorage.',
-    impact: 'Account takeover via XSS script execution.',
-    fix: 'Store tokens in HttpOnly, Secure, SameSite=Strict cookies.',
-    codeSnippet: 'res.cookie("token", jwt, { httpOnly: true, secure: true, sameSite: "strict" });',
-  },
-  {
-    id: 3,
-    finding_id: 'WM-REC-03',
-    priority: 'Medium Priority',
-    color: 'text-amber-600 dark:text-amber-400',
-    bg: 'bg-amber-50 dark:bg-amber-950/30',
-    border: 'border-amber-200 dark:border-amber-900/50',
-    dot: 'bg-amber-500',
-    title: 'No rate limiting on /api/login.',
-    impact: 'Brute-force credential stuffing feasible.',
-    fix: 'Add exponential backoff after 5 attempts via Redis token bucket.',
-    codeSnippet: 'limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });',
-  },
-  {
-    id: 4,
-    finding_id: 'WM-REC-04',
-    priority: 'Medium Priority',
-    color: 'text-amber-600 dark:text-amber-400',
-    bg: 'bg-amber-50 dark:bg-amber-950/30',
-    border: 'border-amber-200 dark:border-amber-900/50',
-    dot: 'bg-amber-500',
-    title: 'Missing Content-Security-Policy (CSP) headers.',
-    impact: 'Inline script injection possible on untrusted DOM nodes.',
-    fix: "Set Content-Security-Policy: default-src 'self'; script-src 'self'.",
-    codeSnippet: "app.use(helmet.contentSecurityPolicy({ directives: { defaultSrc: [\"'self'\"] } }));",
-  },
-]
-
 const initialState: CopilotState = {
   messages: [],
-  recommendations: defaultRecs,
+  recommendations: [],
   isTyping: false,
   error: null,
 }

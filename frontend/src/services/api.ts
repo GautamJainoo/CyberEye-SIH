@@ -1,6 +1,16 @@
 import { Vulnerability, Severity, Status } from '../types'
 
-const API_BASE = 'http://127.0.0.1:8000/api'
+const getApiBase = () => {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if ((host === 'localhost' || host === '127.0.0.1') && window.location.port === '5173') {
+      return `${window.location.protocol}//${host}:8000/api`
+    }
+  }
+  return '/api'
+}
+
+const API_BASE = getApiBase()
 
 export interface BackendHealth {
   status: string
@@ -155,9 +165,12 @@ export async function fetchHealth(): Promise<BackendHealth | null> {
   }
 }
 
-export async function fetchFindings(): Promise<FindingsResponse | null> {
+export async function fetchFindings(targetUrl?: string): Promise<FindingsResponse | null> {
   try {
-    const res = await fetch(`${API_BASE}/findings`, { signal: AbortSignal.timeout(6000) })
+    const url = targetUrl
+      ? `${API_BASE}/findings?target_url=${encodeURIComponent(targetUrl)}`
+      : `${API_BASE}/findings`
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
     if (!res.ok) return null
     return await res.json()
   } catch {
@@ -443,9 +456,12 @@ export async function fetchDevToolsPerformance(targetUrl?: string): Promise<DevT
   }
 }
 
-export async function fetchDevToolsStorage(): Promise<DevToolsStorage | null> {
+export async function fetchDevToolsStorage(targetUrl?: string): Promise<DevToolsStorage | null> {
   try {
-    const res = await fetch(`${API_BASE}/devtools/storage`)
+    const url = targetUrl
+      ? `${API_BASE}/devtools/storage?target_url=${encodeURIComponent(targetUrl)}`
+      : `${API_BASE}/devtools/storage`
+    const res = await fetch(url)
     if (!res.ok) return null
     return await res.json()
   } catch {

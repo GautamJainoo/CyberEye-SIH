@@ -241,7 +241,7 @@ export default function FindingsTable({
                     onClick={onLoadSample}
                     className="btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
                   >
-                    Load Sample Findings (12)
+                    Load Live Findings
                   </button>
                 )}
               </div>

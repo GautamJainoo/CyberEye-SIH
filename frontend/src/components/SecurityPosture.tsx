@@ -12,13 +12,6 @@ interface Segment {
   count: number
 }
 
-const defaultSegments: Segment[] = [
-  { label: 'Critical', pct: 0.16, color: '#ef4444', count: 2 },
-  { label: 'High',     pct: 0.42, color: '#f97316', count: 5 },
-  { label: 'Medium',   pct: 0.33, color: '#f59e0b', count: 8 },
-  { label: 'Low',      pct: 0.09, color: '#10b981', count: 11 },
-]
-
 const zeroSegments: Segment[] = [
   { label: 'Critical', pct: 0, color: '#ef4444', count: 0 },
   { label: 'High',     pct: 0, color: '#f97316', count: 0 },
@@ -49,7 +42,7 @@ export default function SecurityPosture({ onFilterSeverity, isZeroData: propZero
       else low++
     }
     const total = crit + high + med + low
-    if (total === 0) return defaultSegments
+    if (total === 0) return zeroSegments
     return [
       { label: 'Critical', pct: crit / total, color: '#ef4444', count: crit },
       { label: 'High',     pct: high / total, color: '#f97316', count: high },
