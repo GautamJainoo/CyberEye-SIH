@@ -72,16 +72,6 @@ export interface FindingsResponse {
   findings: BackendFinding[]
 }
 
-export interface ScanResponse {
-  scan_id: string
-  profile: string
-  status: string
-  duration_seconds: number
-  findings_count: number
-  tool_errors: Record<string, string>
-  tool_runs: { tool_name: string; tool_version: string; exit_code: number; duration_seconds: number }[]
-}
-
 // Convert Backend Finding to Frontend Vulnerability format
 export function mapBackendFinding(bf: BackendFinding, index: number): Vulnerability {
   let sev: Severity = 'Low'

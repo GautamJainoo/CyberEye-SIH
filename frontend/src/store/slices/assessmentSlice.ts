@@ -5,7 +5,6 @@ import {
   configureTarget,
   resetDatabase,
   BackendHealth,
-  ScanResponse,
   TargetConfigPayload,
   TargetConfigResponse,
 } from '../../services/api'
@@ -18,7 +17,7 @@ export interface AssessmentState {
   scanModalOpen: boolean
   isScanning: boolean
   backendHealth: BackendHealth | null
-  scanResults: ScanResponse | null
+  scanResults: { status: string } | null
   error: string | null
 }
 
