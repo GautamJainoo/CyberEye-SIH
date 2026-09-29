@@ -1,3 +1,5 @@
+'use client'
+
 import { createContext, useContext, useCallback, ReactNode } from 'react'
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'

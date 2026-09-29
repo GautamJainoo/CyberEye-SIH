@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect } from 'react'
 import Sidebar from '../components/Sidebar'
 import Topbar from '../components/Topbar'
@@ -23,8 +25,6 @@ import { useToast } from '../components/Toast'
 import { Shield, Sparkles, Terminal, Activity, ChevronRight, Settings } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '../store'
 import {
-  toggleZeroData,
-  setZeroData,
   setSeverityFilter,
   setSearchQuery,
   fetchFindingsAsync,
@@ -32,12 +32,13 @@ import {
 import {
   setActiveTab,
   setTargetUrl,
-  setLastScanTime,
   setScanModalOpen,
   fetchHealthAsync,
 } from '../store/slices/assessmentSlice'
-import { fetchDevToolsAllAsync } from '../store/slices/devtoolsSlice'
 import { fetchRecommendationsAsync } from '../store/slices/copilotSlice'
+import { fetchSummaryAsync } from '../store/slices/summarySlice'
+import { API_BASE } from '../services/api'
+import { formatDateTime } from '../lib/adminApi'
 import { fetchRadarAsync, fetchAttackSurfaceAsync, fetchNetworkInspectAsync } from '../store/slices/telemetrySlice'
 
 export default function Dashboard() {
@@ -50,44 +51,42 @@ export default function Dashboard() {
   const { isZeroData, searchQuery, severityFilter, items: findings } = useAppSelector(
     (state) => state.findings
   )
-  const perf = useAppSelector((state) => state.devtools.performance)
-  const perfScore = perf?.summary?.overall_score ?? 87
-  const critCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'CRITICAL').length
-  const highCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'HIGH').length
-  const medCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'MEDIUM').length
-  const securityScore = isZeroData ? 100 : Math.max(15, Math.min(100, 100 - (critCount * 14 + highCount * 7 + medCount * 2)))
-  const overallScore = isZeroData ? 100 : Math.round((perfScore + securityScore) / 2)
+  const summary = useAppSelector((state) => state.summary.data)
+  // Overall score = mean of the MEASURED scores only (Lighthouse categories + findings-derived security score).
+  const audit = summary?.web_audit?.categories
+  const measured = [audit?.performance, audit?.accessibility, audit?.best_practices, audit?.seo, summary?.risk.security_score]
+    .filter((v): v is number => typeof v === 'number')
+  const overallScore: number | null = measured.length ? Math.round(measured.reduce((a, b) => a + b, 0) / measured.length) : null
+
+  useEffect(() => {
+    // Deep link: /?tab=inspect|vulns|ai-chat|reports|admin
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    if (tab && ['dashboard', 'admin', 'inspect', 'vulns', 'ai-chat', 'reports'].includes(tab)) dispatch(setActiveTab(tab))
+  }, [dispatch])
 
   useEffect(() => {
     // Initial global background telemetry bootstrap
     dispatch(fetchFindingsAsync(targetUrl))
     dispatch(fetchHealthAsync())
-    dispatch(fetchDevToolsAllAsync(targetUrl))
     dispatch(fetchRecommendationsAsync())
     dispatch(fetchRadarAsync())
     dispatch(fetchAttackSurfaceAsync())
     dispatch(fetchNetworkInspectAsync(targetUrl))
+    dispatch(fetchSummaryAsync())
   }, [dispatch, targetUrl])
 
-  const handleScan = (url: string) => {
-    dispatch(setZeroData(false))
-    dispatch(setLastScanTime(new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })))
-    dispatch(setTargetUrl(url))
+  const refreshAll = (url: string) => {
     dispatch(fetchFindingsAsync(url))
-    dispatch(fetchDevToolsAllAsync(url))
     dispatch(fetchNetworkInspectAsync(url))
+    dispatch(fetchSummaryAsync())
+    dispatch(fetchRecommendationsAsync())
+    dispatch(fetchRadarAsync())
+    dispatch(fetchAttackSurfaceAsync())
   }
 
-  const handleToggleZeroData = () => {
-    dispatch(toggleZeroData())
-    const next = !isZeroData
-    toast(
-      next ? 'info' : 'success',
-      next ? 'Baseline Mode Activated' : 'Live Findings Restored',
-      next
-        ? 'Displaying clean baseline state with 0 active vulnerabilities'
-        : 'Displaying active security findings and real-time threat telemetry'
-    )
+  const handleScan = (url: string) => {
+    dispatch(setTargetUrl(url))
+    refreshAll(url)
   }
 
   const handleFilterSeverity = (sev: string) => {
@@ -129,8 +128,6 @@ export default function Dashboard() {
           onTargetUrlChange={(url) => dispatch(setTargetUrl(url))}
           onSearch={(q) => dispatch(setSearchQuery(q))}
           onScan={handleScan}
-          isZeroData={isZeroData}
-          onToggleZeroData={handleToggleZeroData}
         />
 
         {/* View Switcher Header Bar */}
@@ -211,7 +208,7 @@ export default function Dashboard() {
             {/* TAB: DASHBOARD OVERVIEW (Complete Image 1 UI) */}
             {activeTab === 'dashboard' && (
               <>
-                {/* 1. Hero Welcome Banner (Score 92/100) + Quick Actions */}
+                {/* 1. Hero summary banner + Quick Actions */}
                 <HeroBanner
                   targetUrl={targetUrl}
                   onRunCheck={() => dispatch(setScanModalOpen(true))}
@@ -219,14 +216,8 @@ export default function Dashboard() {
                     const tableEl = document.getElementById('findings-table-section')
                     if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
                   }}
-                  onDownloadPdf={() =>
-                    toast(
-                      'success',
-                      'PDF Export Complete',
-                      'World Monitor Health & Security Executive Report downloaded successfully.'
-                    )
-                  }
-                  lastCheckedTime={lastScanTime}
+                  onDownloadPdf={() => window.open(`${API_BASE}/report/export?format=pdf`, '_blank')}
+                  lastCheckedTime={formatDateTime(summary?.coverage.last_run_at)}
                   overallScore={overallScore}
                 />
 
@@ -239,7 +230,7 @@ export default function Dashboard() {
                     <CoreWebVitals onViewAll={() => dispatch(setActiveTab('inspect'))} />
                   </div>
                   <div className="lg:col-span-4 flex flex-col justify-between">
-                    <RecentActivity isZeroData={isZeroData} />
+                    <RecentActivity />
                   </div>
                 </div>
 
@@ -303,11 +294,10 @@ export default function Dashboard() {
                         searchQuery={searchQuery}
                         selectedSeverity={severityFilter}
                         isZeroData={isZeroData}
-                        onLoadSample={() => dispatch(setZeroData(false))}
                         onTriggerScan={() => dispatch(setScanModalOpen(true))}
                       />
                     </div>
-                    <AttackSurfaceMap isZeroData={isZeroData} />
+                    <AttackSurfaceMap />
                   </div>
 
                   <div className="xl:col-span-1 space-y-5">
@@ -319,7 +309,6 @@ export default function Dashboard() {
                 <ReportSummary
                   targetUrl={targetUrl}
                   onSelectSeverity={handleFilterSeverity}
-                  isZeroData={isZeroData}
                 />
               </>
             )}
@@ -396,12 +385,11 @@ export default function Dashboard() {
                   searchQuery={searchQuery}
                   selectedSeverity={severityFilter}
                   isZeroData={isZeroData}
-                  onLoadSample={() => dispatch(setZeroData(false))}
                   onTriggerScan={() => dispatch(setScanModalOpen(true))}
                 />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <AttackSurfaceMap isZeroData={isZeroData} />
+                  <AttackSurfaceMap />
                   <AiAssistant />
                 </div>
               </div>
@@ -413,10 +401,10 @@ export default function Dashboard() {
                 <div className="text-center space-y-1">
                   <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center justify-center gap-2">
                     <Sparkles className="text-teal-500" size={20} />
-                    <span>AI Security Chatbot (NLP + RAG)</span>
+                    <span>AI Security Copilot</span>
                   </h1>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Box 3 in Architecture Workflow: Knowledge retrieval from CVE databases, project code, and automated scan results
+                    Explains stored findings and suggests fixes. It only uses what the scanners recorded and never marks anything as verified.
                   </p>
                 </div>
 
@@ -430,7 +418,6 @@ export default function Dashboard() {
                 <ReportSummary
                   targetUrl={targetUrl}
                   onSelectSeverity={handleFilterSeverity}
-                  isZeroData={isZeroData}
                 />
               </div>
             )}
@@ -442,10 +429,7 @@ export default function Dashboard() {
       <ScanModal
         isOpen={scanModalOpen}
         onClose={() => dispatch(setScanModalOpen(false))}
-        onScanComplete={() => {
-          dispatch(toggleZeroData())
-          dispatch(setLastScanTime('28 Sep 2026, 12:52 PM'))
-        }}
+        onScanComplete={() => refreshAll(targetUrl)}
       />
     </div>
   )

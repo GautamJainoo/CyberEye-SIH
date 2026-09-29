@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useMemo } from 'react'
 import { useToast } from './Toast'
 import { useAppSelector } from '../store'
@@ -30,6 +32,7 @@ export default function SecurityPosture({ onFilterSeverity, isZeroData: propZero
   const findingsState = useAppSelector((state) => state.findings)
   const isZeroData = propZero !== undefined ? propZero : findingsState.isZeroData
   const items = findingsState.items
+  const risk = useAppSelector((state) => state.summary.data?.risk)
 
   const segments = useMemo(() => {
     if (isZeroData) return zeroSegments
@@ -65,14 +68,19 @@ export default function SecurityPosture({ onFilterSeverity, isZeroData: propZero
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Overall Security Posture</h2>
         <button
-          onClick={() => toast('info', isZeroData ? 'Clean Status' : 'Risk Rating: Medium', isZeroData ? 'Zero CVEs or exploit vectors detected.' : 'Based on 2 critical database vectors.')}
+          onClick={() => toast('info', risk ? `Risk ${risk.score}/100 (${risk.level})` : 'No data', risk?.formula ?? 'No findings are stored yet.')}
           className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border transition-colors cursor-pointer ${
-            isZeroData
-              ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
-              : 'bg-amber-100 dark:bg-amber-950/60 hover:bg-amber-200 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+            !risk || risk.level === 'None'
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+              : risk.level === 'Low'
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                : risk.level === 'Medium'
+                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                  : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
           }`}
+          title={risk?.formula}
         >
-          {isZeroData ? 'Clean Baseline' : 'Medium Risk'}
+          {risk ? (risk.level === 'None' ? 'No findings' : `${risk.level} risk (${risk.score})`) : 'No data'}
         </button>
       </div>
 
@@ -138,7 +146,7 @@ export default function SecurityPosture({ onFilterSeverity, isZeroData: propZero
               fontSize="22"
               fontWeight="700"
             >
-              {hoveredSegment ? hoveredSegment.count : isZeroData ? '0' : '68'}
+              {hoveredSegment ? hoveredSegment.count : items.length}
             </text>
             <text
               x="70" y="82"
@@ -146,7 +154,7 @@ export default function SecurityPosture({ onFilterSeverity, isZeroData: propZero
               className="donut-label fill-slate-400 dark:fill-slate-500"
               fontSize="11"
             >
-              {hoveredSegment ? hoveredSegment.label : isZeroData ? 'Issues' : '/100'}
+              {hoveredSegment ? hoveredSegment.label : 'findings'}
             </text>
           </svg>
         </div>
@@ -154,26 +162,24 @@ export default function SecurityPosture({ onFilterSeverity, isZeroData: propZero
         <div className="flex-1 min-w-0">
           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-3">
             {isZeroData ? (
-              <>
-                Target infrastructure is currently verified with <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">0 active vulnerabilities</strong>. Run a target scan anytime to evaluate new vectors.
-              </>
+              <>No findings are stored. Run the assessment from the Admin panel or &quot;Run Automated Scanner&quot; to populate this view.</>
             ) : (
               <>
-                Your application has security issues requiring attention. Address{' '}
+                {items.length} finding(s), all unverified candidates until an analyst verifies them:{' '}
                 <button
-                  onClick={() => handleSeverityClick('Critical', 2)}
-                  className="text-red-600 dark:text-red-400 font-semibold underline underline-offset-2 hover:text-red-800 dark:hover:text-red-300 cursor-pointer"
+                  onClick={() => handleSeverityClick('Critical', segments[0].count)}
+                  className="text-red-600 dark:text-red-400 font-semibold underline underline-offset-2 cursor-pointer"
                 >
-                  critical
-                </button>{' '}
-                and{' '}
+                  {segments[0].count} critical
+                </button>
+                ,{' '}
                 <button
-                  onClick={() => handleSeverityClick('High', 5)}
-                  className="text-orange-600 dark:text-orange-400 font-semibold underline underline-offset-2 hover:text-orange-800 dark:hover:text-orange-300 cursor-pointer"
+                  onClick={() => handleSeverityClick('High', segments[1].count)}
+                  className="text-orange-600 dark:text-orange-400 font-semibold underline underline-offset-2 cursor-pointer"
                 >
-                  high
-                </button>{' '}
-                severity findings first.
+                  {segments[1].count} high
+                </button>
+                .
               </>
             )}
           </p>

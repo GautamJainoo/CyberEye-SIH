@@ -8,7 +8,6 @@ import {
   NetworkInspectResponse,
 } from '../../services/api'
 import { RadarDataPoint } from '../../types'
-import { radarData as defaultRadar } from '../../data'
 
 export interface TelemetryState {
   radar: RadarDataPoint[]
@@ -19,7 +18,7 @@ export interface TelemetryState {
 }
 
 const initialState: TelemetryState = {
-  radar: defaultRadar,
+  radar: [],
   attackSurfaceNodes: {},
   networkInspect: null,
   isLoading: false,
@@ -85,18 +84,14 @@ export const telemetrySlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(fetchRadarAsync.fulfilled, (state, action) => {
-        if (action.payload && action.payload.length > 0) {
-          state.radar = action.payload
-        }
+        state.radar = action.payload || []
       })
       .addCase(fetchAttackSurfaceAsync.fulfilled, (state, action) => {
-        if (action.payload && action.payload.length > 0) {
-          const map: Record<string, TelemetryAttackSurfaceNode> = {}
-          action.payload.forEach((n) => {
-            map[n.id] = n
-          })
-          state.attackSurfaceNodes = map
-        }
+        const map: Record<string, TelemetryAttackSurfaceNode> = {}
+        ;(action.payload || []).forEach((n) => {
+          map[n.id] = n
+        })
+        state.attackSurfaceNodes = map
       })
       .addCase(fetchNetworkInspectAsync.fulfilled, (state, action) => {
         if (action.payload) {

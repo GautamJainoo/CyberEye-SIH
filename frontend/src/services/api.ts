@@ -1,16 +1,8 @@
 import { Vulnerability, Severity, Status } from '../types'
 
-const getApiBase = () => {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname
-    if ((host === 'localhost' || host === '127.0.0.1') && window.location.port === '5173') {
-      return `${window.location.protocol}//${host}:8000/api`
-    }
-  }
-  return '/api'
-}
-
-const API_BASE = getApiBase()
+// Backend API (FastAPI on loopback). Override with NEXT_PUBLIC_API_BASE.
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000/api'
+export const API_ORIGIN = API_BASE.replace(/\/api$/, '')
 
 export interface BackendHealth {
   status: string
@@ -80,12 +72,13 @@ export interface FindingsResponse {
 }
 
 export interface ScanResponse {
-  run_id: string
+  scan_id: string
   profile: string
-  findings_discovered: number
-  findings_persisted: number
+  status: string
   duration_seconds: number
-  scanner_status: Record<string, string>
+  findings_count: number
+  tool_errors: Record<string, string>
+  tool_runs: { tool_name: string; tool_version: string; exit_code: number; duration_seconds: number }[]
 }
 
 // Convert Backend Finding to Frontend Vulnerability format
@@ -107,12 +100,13 @@ export function mapBackendFinding(bf: BackendFinding, index: number): Vulnerabil
     status = 'Open'
   }
 
-  let toolDetected: 'Semgrep (SAST)' | 'Gitleaks (Secrets)' | 'OSV-Scanner (SCA)' | 'OWASP ZAP (DAST)' | undefined
-  const cat = (bf.category || '').toLowerCase()
-  if (cat === 'sast') toolDetected = 'Semgrep (SAST)'
-  else if (cat === 'secret') toolDetected = 'Gitleaks (Secrets)'
-  else if (cat === 'sca') toolDetected = 'OSV-Scanner (SCA)'
-  else if (cat === 'dast') toolDetected = 'OWASP ZAP (DAST)'
+  // The real tool that reported this finding (first source), not a guess from the category.
+  const TOOL_LABELS: Record<string, string> = {
+    semgrep: 'Semgrep (SAST)', gitleaks: 'Gitleaks (Secrets)', 'osv-scanner': 'OSV-Scanner (SCA)',
+    zap: 'OWASP ZAP (DAST)', 'worldmonitor-probes': 'World Monitor probe', 'gemini-review': 'Gemini code review',
+  }
+  const srcTool = bf.sources?.[0]?.tool_name
+  const toolDetected = srcTool ? TOOL_LABELS[srcTool] || srcTool : undefined
 
   const component = bf.file
     ? `${bf.file}${bf.line_start ? `:${bf.line_start}` : ''}`
@@ -120,7 +114,7 @@ export function mapBackendFinding(bf: BackendFinding, index: number): Vulnerabil
     ? `${bf.method || 'GET'} ${bf.endpoint}`
     : bf.package
     ? `${bf.package}@${bf.package_version || '*'}`
-    : 'worldmonitor/core'
+    : 'unspecified location'
 
   const cveStr = bf.cve && bf.cve.length > 0 ? bf.cve[0] : undefined
   const cweStr = bf.cwe && bf.cwe.length > 0 ? bf.cwe[0] : undefined
@@ -132,7 +126,7 @@ export function mapBackendFinding(bf: BackendFinding, index: number): Vulnerabil
     description: bf.description,
     severity: sev,
     component,
-    cvss: bf.cvss_score ?? (sev === 'Critical' ? 9.2 : sev === 'High' ? 7.8 : sev === 'Medium' ? 5.4 : 3.1),
+    cvss: bf.cvss_score ?? null, // never invented: shown as "--" when the source provides no CVSS
     status,
     rawStatus: bf.status,
     cve: cveStr,
@@ -140,14 +134,14 @@ export function mapBackendFinding(bf: BackendFinding, index: number): Vulnerabil
     toolDetected,
     stepsToReproduce: bf.file
       ? [
-          `Inspect file location: ${bf.file}${bf.line_start ? ` at line ${bf.line_start}` : ''}`,
-          `Rule / Detector ID: ${bf.sources?.[0]?.rule_id || 'wm-security-rule'}`,
-          `Evidence hash: ${bf.sources?.[0]?.snippet_hash || 'verified-sha256'}`,
+          `Open ${bf.file}${bf.line_start ? ` at line ${bf.line_start}` : ''}`,
+          ...(bf.sources?.[0]?.rule_id ? [`Detector / rule: ${bf.sources[0].rule_id}`] : []),
+          ...(bf.sources?.[0]?.snippet_hash ? [`Snippet hash: ${bf.sources[0].snippet_hash}`] : []),
         ]
       : undefined,
     pocPayload: bf.sources?.[0]?.raw_ref || undefined,
-    businessImpact: bf.impact || 'Potential integrity and confidentiality compromise within application boundary.',
-    remediationCode: bf.remediation_proposal || '// Apply input sanitization and parameter binding per OWASP ASVS 4.0',
+    businessImpact: bf.impact || undefined,
+    remediationCode: bf.remediation_proposal || undefined,
     evidenceCount: bf.evidence_count ?? 0,
     kevMatch: bf.kev_match ?? false,
     file: bf.file || undefined,
@@ -418,8 +412,11 @@ export interface CopilotRecommendation {
 export interface TelemetryAttackSurfaceNode {
   id: string
   label: string
-  status: 'secure' | 'warning' | 'vulnerable'
+  kind: 'source' | 'dependencies' | 'secrets' | 'runtime'
+  status: 'warning' | 'vulnerable'
+  max_severity: string
   findings: number
+  top: { finding_id: string; title: string; severity: string }[]
 }
 
 export async function fetchDevToolsNetwork(targetUrl?: string): Promise<DevToolsNetworkRequest[]> {

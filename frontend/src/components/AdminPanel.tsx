@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import {
   Shield, Globe, GitBranch, Terminal, RefreshCw, Trash2, CheckCircle2,
@@ -83,7 +85,7 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
     setLogs((prev) => [
       ...prev,
       `[WMSA Orchestrator] Starting multi-tool security assessment (lite profile)...`,
-      `[Modules] Semgrep (SAST) + Gitleaks (Secrets) + OSV-Scanner (SCA) + ZAP (DAST)`,
+      `[Modules] Gemini review + Semgrep + Gitleaks + OSV-Scanner + probes (use the full pipeline for ZAP and Lighthouse)`,
     ])
 
     const res = await triggerScan('lite')
@@ -92,14 +94,14 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
     if (res) {
       setLogs((prev) => [
         ...prev,
-        `[Scan Result] Discovered: ${res.findings_discovered} candidate findings in ${res.duration_seconds.toFixed(2)}s`,
-        `[Database] Persisted ${res.findings_persisted} findings to SQLite audit store`,
-        ...Object.entries(res.scanner_status).map(([tool, st]) => `[Tool: ${tool}] ${st}`),
+        `[Scan ${res.scan_id}] ${res.status}: ${res.findings_count} finding(s) ingested in ${res.duration_seconds.toFixed(1)}s`,
+        ...res.tool_runs.map((t) => `[Tool: ${t.tool_name} ${t.tool_version}] exit ${t.exit_code} in ${t.duration_seconds.toFixed(1)}s`),
+        ...Object.entries(res.tool_errors || {}).map(([tool, err]) => `[Tool: ${tool}] FAILED: ${err}`),
       ])
       toast(
-        'success',
-        'Assessment Finished',
-        `Discovered ${res.findings_discovered} vulnerabilities across active scanners.`
+        Object.keys(res.tool_errors || {}).length ? 'warning' : 'success',
+        'Assessment finished',
+        `${res.findings_count} finding(s) ingested; ${Object.keys(res.tool_errors || {}).length} tool(s) failed.`
       )
       await loadHealth()
       onScanComplete?.()
@@ -110,7 +112,7 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
   }
 
   const handleResetDatabase = async () => {
-    if (!window.confirm('Reset all vulnerability findings and scan history? This restores a 100% clean baseline.')) {
+    if (!window.confirm('Reset all vulnerability findings and scan history? Findings and scan history are removed (the append-only audit log is kept).')) {
       return
     }
 

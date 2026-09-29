@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useRef, useState } from 'react'
 import {
   X, Shield, Copy, Check, Tag,
@@ -148,6 +150,11 @@ export default function VulnModal({ vuln, onClose, onStatusChange }: Props) {
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <span className={severityClass(vuln.severity)}>{vuln.severity}</span>
               <span className={statusClass(currentStatus)}>{currentStatus}</span>
+              {vuln.backendId && (
+                <a href={`/findings/${vuln.backendId}`} className="text-[11px] text-indigo-600 dark:text-indigo-400 underline underline-offset-2">
+                  Open full report: proof image, method and fix
+                </a>
+              )}
               {vuln.toolDetected && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-mono">
                   {vuln.toolDetected}
@@ -241,7 +248,7 @@ export default function VulnModal({ vuln, onClose, onStatusChange }: Props) {
               {/* Meta grid */}
               <div className="grid grid-cols-2 gap-3">
                 <MetaBox label="Affected Component" value={vuln.component} />
-                <MetaBox label="CVSS v3.1 Score" value={`${vuln.cvss} / 10.0`} mono />
+                <MetaBox label="CVSS v3.1 Score" value={vuln.cvss != null ? `${vuln.cvss} / 10.0` : 'Not provided by the source'} mono />
               </div>
 
               {/* Risk bar */}

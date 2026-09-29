@@ -2,17 +2,17 @@ import { configureStore } from '@reduxjs/toolkit'
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux'
 import findingsReducer from './slices/findingsSlice'
 import assessmentReducer from './slices/assessmentSlice'
-import devtoolsReducer from './slices/devtoolsSlice'
 import copilotReducer from './slices/copilotSlice'
 import telemetryReducer from './slices/telemetrySlice'
+import summaryReducer from './slices/summarySlice'
 
 export const store = configureStore({
   reducer: {
     findings: findingsReducer,
     assessment: assessmentReducer,
-    devtools: devtoolsReducer,
     copilot: copilotReducer,
     telemetry: telemetryReducer,
+    summary: summaryReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

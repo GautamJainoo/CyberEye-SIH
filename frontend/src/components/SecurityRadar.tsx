@@ -1,5 +1,6 @@
+'use client'
+
 import { useState } from 'react'
-import { radarData, zeroRadarData } from '../data'
 import { RadarDataPoint } from '../types'
 import { useToast } from './Toast'
 import { useAppSelector } from '../store'
@@ -26,8 +27,7 @@ function buildPolygonPoints(values: number[], maxVal: number) {
     .join(' ')
 }
 
-function buildGridPoints(r: number) {
-  const n = 6
+function buildGridPoints(r: number, n: number) {
   return Array.from({ length: n }, (_, i) => {
     const angle = (2 * Math.PI * i) / n
     const { x, y } = polarToCartesian(angle, r)
@@ -48,20 +48,21 @@ export default function SecurityRadar({ isZeroData: propZero }: Props) {
   const storeRadar = useAppSelector((state) => state.telemetry.radar)
   const isZeroData = propZero !== undefined ? propZero : findingsZero
 
-  const activeRadar = isZeroData ? zeroRadarData : (storeRadar || radarData)
-  const n = activeRadar.length
+  const activeRadar = storeRadar
+  const n = Math.max(activeRadar.length, 3)
+  const lowest = activeRadar.length ? activeRadar.reduce((a, b) => (b.value < a.value ? b : a)) : null
   const gridLevels = [0.25, 0.5, 0.75, 1]
 
   const handlePointClick = (d: RadarDataPoint) => {
     setSelectedPoint(d)
-    toast('info', `${d.label} Dimension`, `Score: ${d.value}/100. Target minimum benchmark: 80/100.`)
+    toast('info', d.label, `${d.value}/100 from ${d.findings ?? 0} finding(s) mapped to this area. 100 means none recorded (not proof of safety).`)
   }
 
   return (
     <div className="card p-5 h-full flex flex-col justify-between gap-2">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Security Radar</h2>
-        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">6 Pillars</span>
+        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{activeRadar.length} scope areas</span>
       </div>
 
       <div className="flex justify-center relative select-none my-auto py-1">
@@ -70,7 +71,7 @@ export default function SecurityRadar({ isZeroData: propZero }: Props) {
           {gridLevels.map((lvl) => (
             <polygon
               key={lvl}
-              points={buildGridPoints(MAX_RADIUS * lvl)}
+              points={buildGridPoints(MAX_RADIUS * lvl, n)}
               fill="none"
               className="stroke-slate-200 dark:stroke-slate-800"
               strokeWidth="1"
@@ -150,14 +151,14 @@ export default function SecurityRadar({ isZeroData: propZero }: Props) {
       {/* Selected metric footer */}
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
         <span className="text-slate-500 dark:text-slate-400">
-          {selectedPoint ? selectedPoint.label : isZeroData ? 'Status:' : 'Lowest Pillar:'}
+          {selectedPoint ? selectedPoint.label : 'Weakest area:'}
         </span>
         <span className="font-semibold text-slate-800 dark:text-slate-200">
           {selectedPoint
-            ? `${selectedPoint.value} / 100`
-            : isZeroData
-              ? 'Zero Baseline (0 / 100)'
-              : 'Input Validation (58/100)'}
+            ? `${selectedPoint.value} / 100 (${selectedPoint.findings ?? 0} findings)`
+            : lowest
+              ? `${lowest.label} (${lowest.value}/100)`
+              : 'No data'}
         </span>
       </div>
     </div>

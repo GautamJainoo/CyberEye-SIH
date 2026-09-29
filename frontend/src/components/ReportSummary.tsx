@@ -1,240 +1,99 @@
+'use client'
+
 import { useState } from 'react'
-import { FileDown, FileText, Code2, Loader2, ShieldCheck, Download } from 'lucide-react'
+import { FileDown, FileText, Code2, Loader2, Download } from 'lucide-react'
 import { useToast } from './Toast'
-import { vulnerabilities } from '../data'
-import { getExportUrl } from '../services/api'
+import { useAppSelector } from '../store'
+import { API_BASE } from '../services/api'
 
 interface ReportSummaryProps {
   onSelectSeverity?: (sev: string) => void
   targetUrl?: string
-  isZeroData?: boolean
 }
 
-export default function ReportSummary({
-  onSelectSeverity,
-  targetUrl = 'https://worldmonitor.app',
-  isZeroData = false,
-}: ReportSummaryProps) {
+const RISK_TONE: Record<string, string> = {
+  None: 'text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-300 dark:bg-slate-900 dark:border-slate-700',
+  Low: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/60 dark:border-emerald-800',
+  Medium: 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/60 dark:border-amber-800',
+  High: 'text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-300 dark:bg-orange-950/60 dark:border-orange-800',
+  Critical: 'text-red-700 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-950/60 dark:border-red-800',
+}
+
+export default function ReportSummary({ onSelectSeverity, targetUrl = 'http://127.0.0.1:3000' }: ReportSummaryProps) {
   const { toast } = useToast()
-  const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null)
+  const summary = useAppSelector((s) => s.summary.data)
+  const [downloading, setDownloading] = useState<string | null>(null)
 
-  const handleDownload = async (format: 'PDF' | 'JSON' | 'HTML') => {
-    setDownloadingFormat(format)
-    toast('info', `Preparing ${format} Export`, `Compiling SIH PS 26163 Security Assessment...`)
+  const sev = summary?.findings.by_severity ?? {}
+  const total = summary?.findings.total ?? 0
 
-    if (format === 'JSON' || format === 'HTML') {
-      try {
-        const url = getExportUrl(format.toLowerCase() as 'json' | 'html')
-        const res = await fetch(url, { signal: AbortSignal.timeout(3500) })
-        if (res.ok) {
-          const blob = await res.blob()
-          const blobUrl = URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = blobUrl
-          a.download = `worldmonitor_security_report.${format.toLowerCase()}`
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          URL.revokeObjectURL(blobUrl)
-          setDownloadingFormat(null)
-          toast('success', `${format} Report Exported`, 'Downloaded live WMSA report from local assessment backend.')
-          return
-        }
-      } catch {
-        // Fallback to client-side generation
-      }
-    }
-
-    setTimeout(() => {
-      let content = ''
-      let mimeType = 'text/plain'
-      let fileExt = 'txt'
-
-      if (format === 'JSON') {
-        mimeType = 'application/json'
-        fileExt = 'json'
-        content = JSON.stringify(
-          {
-            reportId: 'SIH-PS26163-AUDIT',
-            title: 'Security Assessment of the World Monitor application',
-            target: targetUrl,
-            sourceCode: 'https://github.com/koala73/worldmonitor',
-            generatedAt: new Date().toISOString(),
-            overallPosture: isZeroData ? 'Clean (0 findings)' : 'Medium Risk (68/100)',
-            scanTools: ['Semgrep (SAST)', 'Gitleaks (Secrets)', 'OSV-Scanner (SCA)', 'OWASP ZAP (DAST)'],
-            findingsCount: isZeroData ? 0 : vulnerabilities.length,
-            findings: isZeroData ? [] : vulnerabilities,
-          },
-          null,
-          2
-        )
-      } else if (format === 'HTML') {
-        mimeType = 'text/html'
-        fileExt = 'html'
-        content = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>World Monitor Security Assessment Report</title>
-  <style>
-    body { font-family: system-ui, sans-serif; padding: 32px; max-width: 900px; margin: auto; background: #0b0f1a; color: #e2e8f0; }
-    h1 { color: #14b8a6; }
-    .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; }
-    .critical { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid #ef4444; }
-    pre { background: #020617; padding: 12px; border-radius: 8px; overflow-x: auto; color: #38bdf8; }
-  </style>
-</head>
-<body>
-  <h1>World Monitor Security Assessment Report (SIH PS 26163)</h1>
-  <p><strong>Target:</strong> ${targetUrl} | <strong>Source:</strong> https://github.com/koala73/worldmonitor</p>
-  <p><strong>Status:</strong> ${isZeroData ? 'CLEAN (Zero Active Findings)' : 'Vulnerabilities Identified'}</p>
-  <hr/>
-  <h2>Documented Vulnerabilities & Proof of Concept</h2>
-  ${(isZeroData ? [] : vulnerabilities)
-    .map(
-      (v) => `
-    <div>
-      <h3>${v.name} <span class="badge critical">${v.severity} - CVSS ${v.cvss}</span></h3>
-      <p><strong>Component:</strong> ${v.component}</p>
-      <p>${v.description}</p>
-      ${v.pocPayload ? `<p><strong>Safe PoC:</strong></p><pre>${v.pocPayload}</pre>` : ''}
-    </div>`
-    )
-    .join('')}
-</body>
-</html>`
-      } else {
-        // PDF / Plain text format
-        mimeType = 'text/plain'
-        fileExt = 'pdf.txt'
-        content = `WORLD MONITOR SECURITY ASSESSMENT REPORT (SIH PS 26163)
-Generated: ${new Date().toLocaleString()}
-Target: ${targetUrl}
-Source Code: https://github.com/koala73/worldmonitor
-Theme: Smart Automation
---------------------------------------------------
-Risk Level: ${isZeroData ? 'Clean (0)' : 'Medium (68/100)'}
-Critical Issues: ${isZeroData ? 0 : 2}
-High Issues: ${isZeroData ? 0 : 2}
-Total Findings: ${isZeroData ? 0 : vulnerabilities.length}
---------------------------------------------------
-Scanning Modules Applied:
-• 6.1 SAST (Semgrep)
-• 6.2 Secret Scanning (Gitleaks)
-• 6.3 SCA (OSV-Scanner)
-• 6.4 DAST (OWASP ZAP)
-
-Executive Summary:
-Authorized security audit of the World Monitor platform completed.
-Key identified vulnerabilities documented with CVSS ratings,
-controlled environment reproduction steps, proof of concept payloads,
-and mitigation recommendations.`
-      }
-
-      const blob = new Blob([content], { type: mimeType })
+  // Reports are generated by the backend from stored findings and evidence. There is no client-side fallback.
+  const handleDownload = async (format: 'pdf' | 'json' | 'html') => {
+    setDownloading(format)
+    try {
+      const res = await fetch(`${API_BASE}/report/export?format=${format}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`)
+      const blob = format === 'json' ? new Blob([JSON.stringify(await res.json(), null, 2)], { type: 'application/json' }) : await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `WorldMonitor_Security_Report_${new Date().toISOString().split('T')[0]}.${fileExt}`
+      a.download = `worldmonitor_security_report.${format}`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-
-      setDownloadingFormat(null)
-      toast('success', `${format} Export Ready`, `Assessment report downloaded successfully.`)
-    }, 900)
+      URL.revokeObjectURL(url)
+      toast('success', `${format.toUpperCase()} report exported`, `Generated by the backend from ${total} stored finding(s).`)
+    } catch (e: any) {
+      toast('error', `${format.toUpperCase()} export failed`, e.message || 'Backend unreachable')
+    }
+    setDownloading(null)
   }
 
   return (
-    <div className="card px-5 py-4 flex flex-wrap items-center justify-between gap-4">
-      {/* Title */}
+    <div id="report-summary-section" className="card px-5 py-4 flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-2">
-        {isZeroData ? (
-          <ShieldCheck size={16} className="text-emerald-500" />
-        ) : (
-          <FileText size={16} className="text-teal-600 dark:text-teal-400" />
-        )}
-        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-          Executive Compliance &amp; Assessment Reports
-        </span>
+        <FileText size={16} className="text-teal-600 dark:text-teal-400" />
+        <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">Assessment Reports</span>
       </div>
 
-      {/* Meta indicators */}
       <div className="flex items-center gap-6 flex-wrap text-xs text-slate-600 dark:text-slate-300">
         <div>
-          <span className="text-slate-400 dark:text-slate-500 mr-1.5">Application:</span>
-          <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-[11px]">
-            {targetUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}
+          <span className="text-slate-400 mr-1.5">Application:</span>
+          <span className="font-semibold font-mono text-[11px]">{targetUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}</span>
+        </div>
+        <div title={summary?.risk.formula}>
+          <span className="text-slate-400 mr-1.5">Risk:</span>
+          <span className={`inline-block px-2 py-0.5 rounded border font-semibold text-[11px] ${RISK_TONE[summary?.risk.level ?? 'None']}`}>
+            {summary ? `${summary.risk.level} (${summary.risk.score})` : '--'}
           </span>
         </div>
+        {(['CRITICAL', 'HIGH'] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => onSelectSeverity?.(k[0] + k.slice(1).toLowerCase())}
+            className="flex items-center hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded transition-colors cursor-pointer"
+          >
+            <span className="text-slate-400 mr-1.5">{k[0] + k.slice(1).toLowerCase()}:</span>
+            <span className={`font-bold ${k === 'CRITICAL' ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400'}`}>{sev[k] ?? 0}</span>
+          </button>
+        ))}
         <div>
-          <span className="text-slate-400 dark:text-slate-500 mr-1.5">Risk Level:</span>
-          {isZeroData ? (
-            <span className="inline-block px-2 py-0.5 rounded text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 font-semibold text-[11px]">
-              Clean (0)
-            </span>
-          ) : (
-            <span className="inline-block px-2 py-0.5 rounded text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 font-semibold text-[11px]">
-              Medium (68)
-            </span>
-          )}
-        </div>
-        <button
-          onClick={() => {
-            onSelectSeverity?.('Critical')
-            toast('info', 'Filter: Critical', `Showing critical priority security vulnerabilities`)
-          }}
-          className="flex items-center hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded transition-colors cursor-pointer"
-        >
-          <span className="text-slate-400 dark:text-slate-500 mr-1.5">Critical:</span>
-          <span className={`font-bold ${isZeroData ? 'text-slate-500 dark:text-slate-400' : 'text-red-600 dark:text-red-400'}`}>
-            {isZeroData ? 0 : 2}
-          </span>
-        </button>
-        <button
-          onClick={() => {
-            onSelectSeverity?.('High')
-            toast('info', 'Filter: High', `Showing high priority security vulnerabilities`)
-          }}
-          className="flex items-center hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded transition-colors cursor-pointer"
-        >
-          <span className="text-slate-400 dark:text-slate-500 mr-1.5">High:</span>
-          <span className={`font-bold ${isZeroData ? 'text-slate-500 dark:text-slate-400' : 'text-orange-600 dark:text-orange-400'}`}>
-            {isZeroData ? 0 : 2}
-          </span>
-        </button>
-        <div>
-          <span className="text-slate-400 dark:text-slate-500 mr-1.5">Total Findings:</span>
-          <span className="font-bold text-slate-800 dark:text-slate-200">
-            {isZeroData ? 0 : vulnerabilities.length}
-          </span>
+          <span className="text-slate-400 mr-1.5">Total findings:</span>
+          <span className="font-bold text-slate-800 dark:text-slate-200">{total}</span>
         </div>
       </div>
 
-      {/* Download Action Buttons (PDF, JSON, HTML) */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => handleDownload('PDF')}
-          disabled={downloadingFormat !== null}
-          className="btn-primary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 bg-teal-600 hover:bg-teal-700"
-        >
-          {downloadingFormat === 'PDF' ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+        <button onClick={() => handleDownload('pdf')} disabled={downloading !== null} className="btn-primary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 bg-teal-600 hover:bg-teal-700">
+          {downloading === 'pdf' ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
           Export PDF
         </button>
-        <button
-          onClick={() => handleDownload('JSON')}
-          disabled={downloadingFormat !== null}
-          className="btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-        >
-          {downloadingFormat === 'JSON' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+        <button onClick={() => handleDownload('json')} disabled={downloading !== null} className="btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+          {downloading === 'json' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
           Export JSON
         </button>
-        <button
-          onClick={() => handleDownload('HTML')}
-          disabled={downloadingFormat !== null}
-          className="btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-        >
-          {downloadingFormat === 'HTML' ? <Loader2 size={13} className="animate-spin" /> : <Code2 size={13} />}
+        <button onClick={() => handleDownload('html')} disabled={downloading !== null} className="btn-secondary text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+          {downloading === 'html' ? <Loader2 size={13} className="animate-spin" /> : <Code2 size={13} />}
           Export HTML
         </button>
       </div>
