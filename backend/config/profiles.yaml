@@ -2,9 +2,10 @@ profiles:
   lite:
     description: "Resource-constrained sequential scan without ZAP"
     tools:
+      - review
+      - semgrep
       - gitleaks
       - osv
-      - semgrep
       - probes
     concurrency: 1
     max_scan_minutes: 10
@@ -14,9 +15,10 @@ profiles:
   standard:
     description: "Full multi-tool scan including scoped OWASP ZAP dynamic analysis"
     tools:
+      - review
+      - semgrep
       - gitleaks
       - osv
-      - semgrep
       - zap
       - probes
     concurrency: 2
