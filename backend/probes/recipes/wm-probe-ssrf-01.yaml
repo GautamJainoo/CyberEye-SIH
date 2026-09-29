@@ -24,11 +24,17 @@ steps:
     method: "GET"
     path: "/api/rss-proxy?url=http://169.254.169.254/latest/meta-data/"
     expected_status: 403
+  - name: "test_public_non_allowlisted_domain"
+    method: "GET"
+    path: "/api/rss-proxy?url=https://example.com/feed.xml"
+    expected_status: 403
+timeout_seconds: 20
+severity_on_fail: "MEDIUM"
 expected_safe_behavior: "All non-allowlisted domains, loopback addresses, and metadata endpoints must be rejected with HTTP 403 Domain not allowed."
 observation_fields:
   - "status_code"
   - "response_error"
-max_requests: 6
+max_requests: 8
 stop_conditions:
   - "Any step returns 200 with external response body"
   - "Request count reaches max_requests"
@@ -38,5 +44,5 @@ evidence_to_capture:
   - "sanitized_responses"
 verdict_rules:
   EXPECTATION_MET: "all steps return 400 or 403"
-  EXPECTATION_NOT_MET: "any step returns 200 or fetches forbidden destination"
+  EXPECTATION_NOT_MET: "any step returns anything other than 400/403 (target relayed a non-allowlisted destination)"
   INCONCLUSIVE: "endpoint unavailable or connection refused"

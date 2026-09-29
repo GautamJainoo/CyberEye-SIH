@@ -507,6 +507,8 @@ class Database:
         db_path: Optional[Path | str] = None,
         database_url: Optional[str] = None,
     ):
+        # WMSA_DB_PATH lets tests / alternate deployments use an isolated SQLite file.
+        db_path = db_path or os.getenv("WMSA_DB_PATH")
         self.db_path = Path(db_path) if db_path else (get_base_dir() / "wmsa.db")
         self.database_url = database_url or os.getenv("DATABASE_URL", "dbname=wmsa")
         self.backend_type = "postgres"
@@ -607,6 +609,7 @@ class Database:
 
                 # Drop and recreate tables to respect triggers and cleanly reset
                 conn.executescript("""
+                DROP TABLE IF EXISTS finding_analysis CASCADE;
                 DROP TABLE IF EXISTS finding_sources CASCADE;
                 DROP TABLE IF EXISTS evidence CASCADE;
                 DROP TABLE IF EXISTS state_transitions CASCADE;

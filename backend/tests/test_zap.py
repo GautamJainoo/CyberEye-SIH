@@ -63,9 +63,10 @@ def test_zap_plan_generation_blocks_out_of_scope_target(zap_adapter):
         )
 
 
-def test_zap_preflight_target_offline_skips_cleanly(zap_adapter, tmp_path):
-    # Port 3000 offline in unit test
-    pre = zap_adapter.preflight(target_path=tmp_path, target_base_url="http://127.0.0.1:3000")
+def test_zap_preflight_target_offline_skips_cleanly(zap_adapter, tmp_path, closed_port):
+    # Nothing listens on this port (independent of any real target on :3000)
+    zap_adapter.manifest.allowed_ports.append(closed_port)
+    pre = zap_adapter.preflight(target_path=tmp_path, target_base_url=f"http://127.0.0.1:{closed_port}")
     assert pre.target_accessible is False
     assert "SKIPPED (target unavailable)" in pre.message
 

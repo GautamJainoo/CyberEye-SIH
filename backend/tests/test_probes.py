@@ -63,7 +63,9 @@ def test_probe_oauth_grant_execution(adapter, tmp_path):
         commit_sha="0d5c618e",
         build_id="b-1",
     )
-    assert res.verdict == "EXPECTATION_MET"
+    # Offline simulation never exercises the target, so it must not claim the expectation was met.
+    assert res.verdict == "INCONCLUSIVE"
+    assert res.finding is None
     assert res.evidence_artifact_path is not None
     assert Path(res.evidence_artifact_path).exists()
     assert len(res.evidence_sha256) == 64

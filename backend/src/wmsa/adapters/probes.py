@@ -86,6 +86,51 @@ class ProbesAdapter:
                     recipes.append(data)
         return recipes
 
+    @staticmethod
+    def _expand_steps(steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Expand `headers_variants: ["Name: value", ...]` into one concrete request per variant."""
+        out: List[Dict[str, Any]] = []
+        for step in steps:
+            variants = step.get("headers_variants")
+            if not variants:
+                out.append(step)
+                continue
+            for i, v in enumerate(variants):
+                name, _, value = v.partition(":")
+                expanded = {k: val for k, val in step.items() if k != "headers_variants"}
+                expanded["name"] = f"{step.get('name', 'step')}#{i + 1}"
+                expanded["headers"] = {**step.get("headers", {}), name.strip(): value.strip()}
+                out.append(expanded)
+        return out
+
+    @staticmethod
+    def _evaluate_step(step: Dict[str, Any], resp: httpx.Response) -> List[str]:
+        """Return the list of recipe assertions this response violates."""
+        violations: List[str] = []
+        expected = step.get("expected_status")
+        if expected is not None:
+            allowed = expected if isinstance(expected, list) else [expected]
+            if resp.status_code not in allowed:
+                violations.append(f"status {resp.status_code} not in expected {allowed}")
+
+        forbidden = step.get("assert_header_not")
+        if forbidden:
+            name, _, value = forbidden.partition(":")
+            got = resp.headers.get(name.strip())
+            if got is not None and got.strip() == value.strip():
+                violations.append(f"forbidden header present: {name.strip()}: {got}")
+
+        field = step.get("assert_field")
+        if field:
+            try:
+                got_val = resp.json().get(field)
+            except Exception:
+                got_val = None
+            want = step.get("expected_value")
+            if want is not None and (got_val is None or str(want) not in str(got_val)):
+                violations.append(f"field '{field}'={got_val!r} does not contain {want!r}")
+        return violations
+
     def execute_recipe(
         self,
         recipe: Dict[str, Any],
@@ -138,13 +183,22 @@ class ProbesAdapter:
 
             if not p1_expired or sig_valid:
                 expectation_met = False
+            # This recipe replays the verifier's logic locally; it never exercises the target,
+            # so it cannot support a claim about the deployed application.
+            inconclusive = True
+            evidence_records.append({
+                "step": "mode",
+                "note": "offline simulation only - target verifier not exercised",
+            })
 
         else:
             # Active HTTP Probes (strictly routed through scope guard)
-            steps = recipe.get("steps", [])
+            steps = self._expand_steps(recipe.get("steps", []))
             req_count = 0
+            timeout = float(recipe.get("timeout_seconds", 3.0))
+            seen_headers: List[Dict[str, str]] = []
 
-            with httpx.Client(timeout=3.0) as client:
+            with httpx.Client(timeout=timeout) as client:
                 for step in steps:
                     if req_count >= max_requests:
                         break
@@ -152,19 +206,20 @@ class ProbesAdapter:
                     path = step.get("path", "/")
                     method = step.get("method", "GET")
                     headers = step.get("headers", {})
-                    expected_status = step.get("expected_status")
 
                     raw_url = f"{target_base_url.rstrip('/')}{path}"
                     try:
                         # SCOPE GUARD: Fail-closed on every single request
                         guarded_url = self.guard.guard(raw_url)
                     except Exception as e:
+                        # A blocked step proves nothing about the target.
+                        inconclusive = True
                         evidence_records.append({
                             "step": step.get("name", "unnamed"),
                             "url": raw_url,
                             "error": f"Blocked by scope guard: {e}",
                         })
-                        continue
+                        break  # kill switch / scope violation: stop the whole recipe
 
                     req_count += 1
                     try:
@@ -177,12 +232,15 @@ class ProbesAdapter:
                             "status_code": resp.status_code,
                             "response_snippet": resp.text[:300],
                         }
+                        violations = self._evaluate_step(step, resp)
+                        if violations:
+                            expectation_met = False
+                            rec["violations"] = violations
+                        elif resp.status_code >= 500:
+                            inconclusive = True
+                            rec["note"] = "server error - cannot judge"
+                        seen_headers.append({k.lower(): v for k, v in resp.headers.items()})
                         evidence_records.append(rec)
-
-                        if expected_status and resp.status_code != expected_status:
-                            # If server returned 200 on an access control check that expected 401/403
-                            if resp.status_code == 200 and expected_status in (401, 403):
-                                expectation_met = False
                     except httpx.ConnectError:
                         inconclusive = True
                         evidence_records.append({
@@ -197,6 +255,15 @@ class ProbesAdapter:
                             "error": str(err),
                         })
 
+            # Properties the recipe needs to observe but the target never exposed -> cannot conclude.
+            required = [h.lower() for h in recipe.get("require_header_any", [])]
+            if required and not any(h in hdrs for hdrs in seen_headers for h in required):
+                inconclusive = True
+                evidence_records.append({
+                    "step": "observability",
+                    "note": f"none of {recipe.get('require_header_any')} observed in responses",
+                })
+
         # Save sanitized evidence artifact
         output_dir.mkdir(parents=True, exist_ok=True)
         evidence_file = output_dir / f"probe_{recipe_id}_{commit_sha[:8]}.json"
@@ -210,18 +277,24 @@ class ProbesAdapter:
 
         evidence_sha = compute_file_sha256(evidence_file)
 
-        if inconclusive:
+        if expectation_met and inconclusive:
             verdict = "INCONCLUSIVE"
         elif expectation_met:
             verdict = "EXPECTATION_MET"
         else:
             verdict = "EXPECTATION_NOT_MET"
             # Emit CandidateFinding when safe expectation was violated
+            from urllib.parse import urlparse
+            violating = next((r for r in evidence_records if r.get("violations")), {})
+            vurl = urlparse(violating.get("url", ""))
+            v_endpoint = (vurl.path + (f"?{vurl.query}" if vurl.query else "")) or None
             findings_emitted = CandidateFinding(
                 title=f"Probe Failure: {title}",
                 category=category,
                 status="CANDIDATE",  # STRICT: never above CANDIDATE
-                severity="HIGH",
+                severity=recipe.get("severity_on_fail", "MEDIUM"),
+                endpoint=v_endpoint,
+                method=violating.get("method"),
                 confidence_label="UNVERIFIED",
                 repo=self.manifest.repo_url,
                 commit_sha=commit_sha,
@@ -231,7 +304,14 @@ class ProbesAdapter:
                 tool_version=self.version(),
                 rule_id=recipe_id,
                 cwe=[cwe_id],
-                description=f"Probe recipe {recipe_id} failed safe behavior expectations.\nDerived from: {', '.join(source_refs)}",
+                description=(
+                    f"Probe recipe {recipe_id} failed safe behavior expectations.\n"
+                    + "\n".join(
+                        f"- {r['step']}: {'; '.join(r['violations'])}"
+                        for r in evidence_records if r.get("violations")
+                    )
+                    + f"\nDerived from: {', '.join(source_refs)}"
+                ),
                 raw_result_ref=f"{evidence_file}#{recipe_id}",
                 remediation_proposal=f"Review handler code at {source_refs[0] if source_refs else 'target'}",
             )
@@ -273,6 +353,7 @@ class ProbesAdapter:
                 "evidence_path": res.evidence_artifact_path,
                 "evidence_sha256": res.evidence_sha256,
                 "has_finding": res.finding is not None,
+                "finding": res.finding.model_dump() if res.finding else None,
             })
 
         duration = time.time() - t0
@@ -309,26 +390,14 @@ class ProbesAdapter:
 
         findings: List[CandidateFinding] = []
         for r_entry in data.get("results", []):
-            if r_entry.get("has_finding"):
-                recipe_id = r_entry.get("recipe_id")
-                evidence_path = r_entry.get("evidence_path")
-                f = CandidateFinding(
-                    title=f"Probe Detected Anomaly: {recipe_id}",
-                    category="authorization",
-                    status="CANDIDATE",
-                    severity="HIGH",
-                    confidence_label="UNVERIFIED",
-                    repo=self.manifest.repo_url,
-                    commit_sha=self.manifest.commit_sha,
-                    build_id="probe-run",
-                    scope_id=self.manifest.scope_id,
-                    tool=self.name,
-                    tool_version=self.version(),
-                    rule_id=recipe_id,
-                    description=f"Probe {recipe_id} observed expectation violation.",
-                    raw_result_ref=f"{evidence_path}#{recipe_id}",
-                )
-                f.compute_fingerprint()
-                findings.append(f)
+            payload = r_entry.get("finding")
+            if not payload:
+                continue
+            # Rebuild the finding produced by execute_recipe (real title, severity, endpoint and the
+            # violated assertions) and point it at this recipe's evidence transcript.
+            f = CandidateFinding(**payload)
+            f.raw_result_ref = f"{r_entry.get('evidence_path')}#{r_entry.get('recipe_id')}"
+            f.compute_fingerprint()
+            findings.append(f)
 
         return findings

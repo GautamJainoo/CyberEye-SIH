@@ -25,10 +25,11 @@ def manifest():
     )
 
 
-def test_target_health_offline(tmp_path, manifest):
-    # Port 3000 is not running target during unit test -> health check returns false cleanly
+def test_target_health_offline(tmp_path, manifest, closed_port):
+    # Nothing listens on this port -> health check returns false cleanly (even if a real target runs on :3000)
+    manifest.allowed_ports.append(closed_port)
     mgr = TargetManager(base_dir=tmp_path, scope_manifest=manifest)
-    healthy, msg = mgr.check_health("http://127.0.0.1:3000")
+    healthy, msg = mgr.check_health(f"http://127.0.0.1:{closed_port}")
     assert healthy is False
     assert "Connection refused" in msg or "failed" in msg or "Unexpected" in msg
 

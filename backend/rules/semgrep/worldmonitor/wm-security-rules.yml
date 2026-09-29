@@ -48,17 +48,25 @@ rules:
       - pattern-not: $EL.innerHTML = ''
 
   - id: wm-ssrf-unvalidated-fetch
-    message: "Potential Server-Side Request Forgery (SSRF): Outbound fetch with unvalidated URL."
+    message: "Potential SSRF: request-controlled URL reaches an outbound fetch without an allowlist check."
     severity: WARNING
     languages: [javascript, typescript]
+    mode: taint
     metadata:
       cwe: ["CWE-918: Server-Side Request Forgery (SSRF)"]
       owasp: ["A10:2021 - Server-Side Request Forgery (SSRF)"]
       category: security
-    patterns:
+    pattern-sources:
+      - pattern: $REQ.searchParams.get(...)
+      - pattern: $REQ.query.$X
+      - pattern: $REQ.body.$X
+      - pattern: $REQ.params.$X
+    pattern-sanitizers:
+      - pattern: isAllowedDomain(...)
+      - pattern: isSafeUrl(...)
+      - pattern: assertAllowedRedirect(...)
+    pattern-sinks:
       - pattern: fetch($URL, ...)
-      - pattern-not-inside: |
-          if (!isAllowedDomain(...)) { ... }
-          ...
-      - pattern-not-inside: |
-          if (isAllowedDomain(...)) { ... }
+        focus-metavariable: $URL
+      - pattern: axios.get($URL, ...)
+        focus-metavariable: $URL

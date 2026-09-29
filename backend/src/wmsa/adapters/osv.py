@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Set
 import psutil
 
 from wmsa.adapters.base import (
+    find_binary,
     CandidateFinding,
     PreflightResult,
     RawRun,
@@ -27,7 +28,7 @@ class OSVScannerAdapter:
     name: str = "osv-scanner"
 
     def __init__(self, binary_path: Optional[str] = None):
-        self.binary_path = binary_path or shutil.which("osv-scanner") or "osv-scanner"
+        self.binary_path = binary_path or find_binary("osv-scanner") or "osv-scanner"
 
     def version(self) -> str:
         try:
@@ -78,23 +79,9 @@ class OSVScannerAdapter:
         t0 = time.time()
 
         if not shutil.which(self.binary_path):
-            # Fallback Python-based dependency scanner for clean machines without OSV-Scanner CLI
-            results = self._fallback_scan(target_path)
-            with open(report_file, "w", encoding="utf-8") as f:
-                json.dump({"results": results}, f, indent=2)
-            duration = time.time() - t0
-            file_sha = compute_file_sha256(report_file)
-            return RawRun(
-                tool_name=self.name,
-                tool_version=self.version(),
-                command_line=f"internal-osv-engine {target_path}",
-                start_time=start_time,
-                end_time=datetime.now(timezone.utc).isoformat(),
-                exit_code=0,
-                raw_output_path=str(report_file),
-                raw_output_sha256=file_sha,
-                peak_ram_mb=15.0,
-                duration_seconds=duration,
+            raise RuntimeError(
+                "osv-scanner binary not found; install the version pinned in tools.lock.json "
+                "(no simulated fallback scan is performed)"
             )
 
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -135,85 +122,6 @@ class OSVScannerAdapter:
             peak_ram_mb=peak_ram_mb,
             duration_seconds=duration,
         )
-
-    def _fallback_scan(self, target_path: Path) -> List[Dict[str, Any]]:
-        """Parses target package.json / package-lock.json to cross-reference vulnerable dependencies."""
-        results: List[Dict[str, Any]] = []
-        lockfile = target_path / "package-lock.json"
-        pkgfile = target_path / "package.json"
-
-        # Check if lockfiles or packages exist
-        packages_to_check = {}
-        if lockfile.exists():
-            try:
-                data = json.loads(lockfile.read_text(encoding="utf-8"))
-                packages_to_check.update(data.get("packages", {}))
-                packages_to_check.update(data.get("dependencies", {}))
-            except Exception:
-                pass
-        elif pkgfile.exists():
-            try:
-                data = json.loads(pkgfile.read_text(encoding="utf-8"))
-                for k, v in data.get("dependencies", {}).items():
-                    packages_to_check[k] = {"version": v.lstrip("^~")}
-            except Exception:
-                pass
-
-        # Known vulnerabilities in World Monitor ecosystem dependencies
-        known_advisories = [
-            {
-                "package": "lodash",
-                "cve": "CVE-2021-23337",
-                "ghsa": "GHSA-29mw-wpgm-hmr9",
-                "summary": "Command Injection in lodash via template",
-                "cwe": ["CWE-78: OS Command Injection"],
-            },
-            {
-                "package": "rollup",
-                "cve": "CVE-2024-47068",
-                "ghsa": "GHSA-gcx4-mw62-g8wm",
-                "summary": "DOM Clobbering gadget in Rollup bundled modules",
-                "cwe": ["CWE-79: Cross-site Scripting"],
-            },
-            {
-                "package": "ws",
-                "cve": "CVE-2024-37890",
-                "ghsa": "GHSA-3h5v-q93c-6h6q",
-                "summary": "ws Denial of Service via malicious headers",
-                "cwe": ["CWE-400: Uncontrolled Resource Consumption"],
-            },
-        ]
-
-        for adv in known_advisories:
-            pkg_name = adv["package"]
-            results.append({
-                "source": {
-                    "path": str(lockfile if lockfile.exists() else pkgfile),
-                    "type": "lockfile",
-                },
-                "packages": [
-                    {
-                        "package": {
-                            "name": pkg_name,
-                            "version": "4.17.15" if pkg_name == "lodash" else "3.2.0",
-                            "ecosystem": "npm",
-                        },
-                        "vulnerabilities": [
-                            {
-                                "id": adv["ghsa"],
-                                "summary": adv["summary"],
-                                "aliases": [adv["cve"]],
-                                "database_specific": {
-                                    "severity": "HIGH" if "Injection" in adv["summary"] else "MEDIUM",
-                                    "cwe_ids": adv["cwe"],
-                                },
-                            }
-                        ],
-                    }
-                ],
-            })
-
-        return results
 
 
     def parse(

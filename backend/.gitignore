@@ -18,3 +18,4 @@ reports/
 *.db-journal
 KILL
 .kill
+rules/zap/plan.active.yaml
