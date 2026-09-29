@@ -47,7 +47,7 @@ def _set(step: str, status: str, detail: str = "") -> None:
         _state["log"].append(f"{datetime.now(timezone.utc).strftime('%H:%M:%S')} {step}: {status} {detail}".strip())
 
 
-def start(db: Database, orchestrator, fresh: bool = True, do_setup: bool = True) -> bool:
+def start(db: Database, orchestrator, fresh: bool = False, do_setup: bool = True) -> bool:
     with _lock:
         if _state["running"]:
             return False

@@ -59,7 +59,7 @@ export default function AdminPage() {
   const [pipe, setPipe] = useState<PipelineState | null>(null)
   const [findings, setFindings] = useState<FindingRow[]>([])
   const [err, setErr] = useState('')
-  const [fresh, setFresh] = useState(true)
+  const [fresh, setFresh] = useState(false)
   const [doSetup, setDoSetup] = useState(true)
   const [busy, setBusy] = useState('')
   const [q, setQ] = useState('')
@@ -186,7 +186,7 @@ export default function AdminPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <h2 className="font-semibold flex items-center gap-2"><Activity className="w-4 h-4" />Full assessment pipeline</h2>
               <div className="flex flex-wrap items-center gap-3 text-xs">
-                <label className="flex items-center gap-1"><input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} />Fresh (clear old findings)</label>
+                <label className="flex items-center gap-1"><input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} />Clear and scan fresh</label>
                 <label className="flex items-center gap-1"><input type="checkbox" checked={doSetup} onChange={(e) => setDoSetup(e.target.checked)} />Gemini-guided local setup</label>
                 <button onClick={start} disabled={pipe?.running || busy === 'start'}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50"><Play className="w-3.5 h-3.5" />{pipe?.running ? 'Running…' : 'Run all 6 scans'}</button>

@@ -181,12 +181,14 @@ class Normalizer:
                     existing_sources = existing_data.get("sources", [])
                     new_source = norm_finding.sources[0].model_dump()
 
-                    # Add new source if not already present
-                    if not any(
+                    # Same fingerprint from a later scan stays one finding.
+                    # A new tool/rule may be attached once. A repeat of the same tool+rule is ignored.
+                    already = any(
                         s.get("tool_name") == new_source["tool_name"]
                         and s.get("rule_id") == new_source["rule_id"]
                         for s in existing_sources
-                    ):
+                    )
+                    if not already:
                         existing_sources.append(new_source)
                         existing_data["sources"] = existing_sources
                         existing_data["updated_at"] = now
@@ -194,23 +196,21 @@ class Normalizer:
                             "UPDATE findings SET data_json = ?, updated_at = ? WHERE finding_id = ?",
                             (json.dumps(existing_data), now, existing_id),
                         )
-
-                    # Insert source link into finding_sources table
-                    conn.execute(
-                        """
-                        INSERT INTO finding_sources (finding_id, tool_name, tool_version, rule_id, snippet_hash, raw_ref, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            existing_id,
-                            new_source["tool_name"],
-                            new_source.get("tool_version"),
-                            new_source.get("rule_id"),
-                            new_source.get("snippet_hash"),
-                            new_source.get("raw_ref"),
-                            now,
-                        ),
-                    )
+                        conn.execute(
+                            """
+                            INSERT INTO finding_sources (finding_id, tool_name, tool_version, rule_id, snippet_hash, raw_ref, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                existing_id,
+                                new_source["tool_name"],
+                                new_source.get("tool_version"),
+                                new_source.get("rule_id"),
+                                new_source.get("snippet_hash"),
+                                new_source.get("raw_ref"),
+                                now,
+                            ),
+                        )
                     norm_finding.finding_id = existing_id
                     norm_finding.status = row["status"]
                     results.append(norm_finding)

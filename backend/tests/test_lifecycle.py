@@ -94,6 +94,15 @@ def test_fingerprint_convergence_and_deduplication(normalizer, test_db):
         assert f_count == 1
         assert s_count == 2
 
+    # A later scan from the same tool must not add another finding or another source row.
+    again = normalizer.ingest_findings([cand2])
+    assert again[0].finding_id == f1_id
+    with test_db.get_connection() as conn:
+        assert conn.execute("SELECT count(*) as c FROM findings").fetchone()["c"] == 1
+        assert conn.execute(
+            "SELECT count(*) as c FROM finding_sources WHERE finding_id = ?", (f1_id,)
+        ).fetchone()["c"] == 2
+
 
 def test_actor_restrictions_tool_and_llm_cannot_promote(normalizer, lifecycle_mgr):
     cand = CandidateFinding(

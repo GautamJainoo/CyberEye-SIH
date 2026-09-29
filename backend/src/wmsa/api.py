@@ -299,7 +299,7 @@ def get_finding_detail(finding_id: str):
 # ── Pipeline, enrichment, proofs and admin data ─────────────────────────────
 
 class PipelineRequest(BaseModel):
-    fresh: bool = True
+    fresh: bool = False
     setup: bool = True
 
 

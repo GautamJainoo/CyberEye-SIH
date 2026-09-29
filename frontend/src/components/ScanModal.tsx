@@ -34,7 +34,7 @@ function StepIcon({ s }: { s: string }) {
 export default function ScanModal({ isOpen, onClose, onScanComplete, embedded = false }: ScanModalProps) {
   const { toast } = useToast()
   const targetUrl = useAppSelector((s) => s.assessment.targetUrl)
-  const [fresh, setFresh] = useState(true)
+  const [fresh, setFresh] = useState(false)
   const [setup, setSetup] = useState(false)
   const [state, setState] = useState<PipelineState | null>(null)
   const [error, setError] = useState('')
@@ -117,7 +117,7 @@ export default function ScanModal({ isOpen, onClose, onScanComplete, embedded = 
           {error && <div className="text-xs text-red-500">{error}</div>}
 
           <div className="flex flex-wrap items-center gap-4 text-xs">
-            <label className="flex items-center gap-1.5"><input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} disabled={running} />Fresh run (clear old findings)</label>
+            <label className="flex items-center gap-1.5"><input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} disabled={running} />Clear and scan fresh</label>
             <label className="flex items-center gap-1.5"><input type="checkbox" checked={setup} onChange={(e) => setSetup(e.target.checked)} disabled={running} />Gemini-guided target start-up</label>
           </div>
 

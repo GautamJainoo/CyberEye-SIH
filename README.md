@@ -59,7 +59,7 @@ Imagine inspecting a large office building for safety problems.
 
 Open `http://127.0.0.1:3100/` and choose **Security Scan** (the assessment is a page, not a popup). A full run is several minutes. Most of the wait is OWASP ZAP.
 
-1. **Fresh start** – old findings from the previous run are cleared (optional checkbox).
+1. **Keep prior findings** – a new scan adds only vulnerabilities that are not already stored. The same finding is not listed twice. Check **Clear and scan fresh** to wipe the list and start over.
 2. **Setup** *(optional checkbox)* – Gemini proposes how to start the local copy. A safety filter allows only pre-approved commands. The Docker app is checked until it answers. If Gemini is offline, a fallback plan still starts the local target.
 3. **Code review, Semgrep, Gitleaks, OSV** – these read files and start immediately, side by side.
 4. **ZAP, probes, Lighthouse** – these need the running app, so they start together only after the local target is healthy. ZAP is capped at 10 minutes (spider up to 2, passive wait up to 2, active scan up to 5, plus startup).
