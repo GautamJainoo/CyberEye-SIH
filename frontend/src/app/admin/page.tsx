@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Activity, CheckCircle2, Circle, Loader2, Play, RefreshCw, XCircle, MinusCircle, ImageIcon, Sparkles } from 'lucide-react'
 import { adminApi, FindingRow, Overview, PipelineState, sevClass, TOOL_LABEL, TOOL_METHOD, ToolRun } from '../../lib/adminApi'
 import ProofLightbox from '../../components/ProofLightbox'
@@ -140,9 +141,19 @@ export default function AdminPage() {
   return (
     <main className="max-w-7xl mx-auto p-4 md:p-6 space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold">SecureLens Admin</h1>
-          <p className="text-xs text-slate-500">World Monitor security assessment · every finding with where, how and proof</p>
+        <div className="flex flex-wrap items-center gap-3 min-w-0">
+          <Image
+            src="/cybereye-logo.jpeg"
+            alt="CyberEye logo"
+            width={1536}
+            height={1024}
+            priority
+            className="h-20 w-auto rounded-lg bg-white shrink-0"
+          />
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold">CyberEye</h1>
+            <p className="text-xs text-slate-500">Admin panel · World Monitor security assessment · every finding with where, how and proof</p>
+          </div>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className={`px-2 py-1 rounded ${ov?.target_healthy ? 'bg-green-500/15 text-green-600' : 'bg-red-500/15 text-red-500'}`}>

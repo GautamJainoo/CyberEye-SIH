@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import {
   Shield, Globe, GitBranch, Terminal, RefreshCw, Trash2, CheckCircle2,
   Play, Server, Database
@@ -145,18 +146,31 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
     <div className="space-y-6 animate-fade-in max-w-5xl mx-auto pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800">
-              <Shield size={18} />
-            </span>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+        <div className="flex flex-wrap items-center gap-3 min-w-0">
+          <Image
+            src="/cybereye-logo.jpeg"
+            alt="CyberEye logo"
+            width={1536}
+            height={1024}
+            priority
+            className="h-20 w-auto rounded-lg bg-white shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800">
+                <Shield size={18} />
+              </span>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                CyberEye
+              </h1>
+            </div>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
               Target Administration &amp; Scanner Setup
-            </h1>
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              GitHub repo and website start filled in. Change either field before you configure.
+            </p>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            GitHub repo and website start filled in. Change either field before you configure.
-          </p>
         </div>
 
         {/* Live Status Pill */}

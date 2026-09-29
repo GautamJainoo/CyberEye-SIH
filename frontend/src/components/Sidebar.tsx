@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   LayoutDashboard, ShieldCheck, Bug, Activity,
-  FileText, Globe, ChevronDown, KeyRound, LogOut, UserCheck, Sun, Moon, Bot, Settings
+  FileText, ChevronDown, KeyRound, LogOut, UserCheck, Sun, Moon, Bot, Settings
 } from 'lucide-react'
 import { useToast } from './Toast'
 import { useTheme } from '../context/ThemeContext'
@@ -26,6 +26,7 @@ const navItems = [
 ]
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useAppSelector } from '../store'
 
 export default function Sidebar({
@@ -55,13 +56,17 @@ export default function Sidebar({
     <aside className="w-56 shrink-0 h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col relative z-20 transition-colors duration-200">
       {/* Brand */}
       <div className="px-4 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="sidebar-brand-bar w-8 h-8 rounded-lg flex items-center justify-center shadow-sm">
-            <Globe size={16} className="text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight">
-              World<span className="text-teal-600 dark:text-teal-400">Monitor</span>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Image
+            src="/cybereye-logo.jpeg"
+            alt=""
+            width={1536}
+            height={1024}
+            className="h-9 w-auto rounded-md bg-white shrink-0"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight truncate">
+              CyberEye
             </p>
             <p className="text-[10px] text-slate-400 leading-tight mt-0.5 font-mono">SEC-OPS v2.4</p>
           </div>

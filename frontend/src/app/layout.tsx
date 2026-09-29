@@ -3,7 +3,7 @@ import '../index.css'
 import Providers from './providers'
 
 export const metadata: Metadata = {
-  title: 'SecureLens - World Monitor Security Assessment',
+  title: 'CyberEye',
   description: 'Evidence-backed security assessment dashboard (SIH 2026, PS 26163)',
 }
 
