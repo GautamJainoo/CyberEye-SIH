@@ -20,6 +20,7 @@ import AiAssistant from '../components/AiAssistant'
 import RecentActivity from '../components/RecentActivity'
 import ReportSummary from '../components/ReportSummary'
 import AdminPanel from '../components/AdminPanel'
+import ScanDock from '../components/ScanDock'
 import { Severity } from '../types'
 import { useToast } from '../components/Toast'
 import { Shield, Sparkles, Terminal, Activity, ChevronRight, Settings } from 'lucide-react'
@@ -32,7 +33,6 @@ import {
 import {
   setActiveTab,
   setTargetUrl,
-  setScanModalOpen,
   fetchHealthAsync,
 } from '../store/slices/assessmentSlice'
 import { fetchRecommendationsAsync } from '../store/slices/copilotSlice'
@@ -45,7 +45,7 @@ export default function Dashboard() {
   const { toast } = useToast()
   const dispatch = useAppDispatch()
 
-  const { targetUrl, activeTab, lastScanTime, scanModalOpen } = useAppSelector(
+  const { targetUrl, activeTab, lastScanTime } = useAppSelector(
     (state) => state.assessment
   )
   const { isZeroData, searchQuery, severityFilter, items: findings } = useAppSelector(
@@ -117,7 +117,6 @@ export default function Dashboard() {
         isZeroData={isZeroData}
         activeTab={activeTab}
         onSelectTab={(tab) => dispatch(setActiveTab(tab))}
-        onOpenScanModal={() => dispatch(setScanModalOpen(true))}
       />
 
       {/* Main Content Area */}
@@ -166,8 +165,12 @@ export default function Dashboard() {
               <span>Inspect &amp; Page Speed</span>
             </button>
             <button
-              onClick={() => dispatch(setScanModalOpen(true))}
-              className="px-3 py-1.5 rounded-lg font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800/80 hover:bg-teal-100/70 dark:hover:bg-teal-900/60 transition-all cursor-pointer flex items-center gap-1.5"
+              onClick={() => dispatch(setActiveTab('scan'))}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'scan'
+                  ? 'bg-teal-500 text-white shadow-sm'
+                  : 'text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800/80 hover:bg-teal-100/70 dark:hover:bg-teal-900/60'
+              }`}
             >
               <Terminal size={13} />
               <span>Run Automated Scanner</span>
@@ -211,7 +214,7 @@ export default function Dashboard() {
                 {/* 1. Hero summary banner + Quick Actions */}
                 <HeroBanner
                   targetUrl={targetUrl}
-                  onRunCheck={() => dispatch(setScanModalOpen(true))}
+                  onRunCheck={() => dispatch(setActiveTab('scan'))}
                   onViewReport={() => {
                     const tableEl = document.getElementById('findings-table-section')
                     if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -240,7 +243,7 @@ export default function Dashboard() {
                     <RecommendedFixesCard onSelectFix={() => dispatch(setActiveTab('inspect'))} />
                   </div>
                   <div className="lg:col-span-4 flex flex-col justify-between">
-                    <StatusAndQuote onRunNewCheck={() => dispatch(setScanModalOpen(true))} />
+                    <StatusAndQuote onRunNewCheck={() => dispatch(setActiveTab('scan'))} />
                   </div>
                 </div>
 
@@ -258,7 +261,7 @@ export default function Dashboard() {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => dispatch(setScanModalOpen(true))}
+                      onClick={() => dispatch(setActiveTab('scan'))}
                       className="btn-primary text-xs flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700"
                     >
                       <Terminal size={13} />
@@ -294,7 +297,7 @@ export default function Dashboard() {
                         searchQuery={searchQuery}
                         selectedSeverity={severityFilter}
                         isZeroData={isZeroData}
-                        onTriggerScan={() => dispatch(setScanModalOpen(true))}
+                        onTriggerScan={() => dispatch(setActiveTab('scan'))}
                       />
                     </div>
                     <AttackSurfaceMap />
@@ -316,9 +319,7 @@ export default function Dashboard() {
             {/* TAB: ADMIN & TARGET SETUP */}
             {activeTab === 'admin' && (
               <AdminPanel
-                onScanComplete={() => {
-                  toast('success', 'Target Ready', 'Target configured and synchronized with live assessment engine.')
-                }}
+                onScanComplete={() => refreshAll(targetUrl)}
                 onNavigateToFindings={() => dispatch(setActiveTab('vulns'))}
               />
             )}
@@ -359,6 +360,15 @@ export default function Dashboard() {
               </div>
             )}
 
+            {activeTab === 'scan' && (
+              <ScanModal
+                embedded
+                isOpen
+                onClose={() => dispatch(setActiveTab('dashboard'))}
+                onScanComplete={() => refreshAll(targetUrl)}
+              />
+            )}
+
             {/* TAB: VULNERABILITIES & POC */}
             {activeTab === 'vulns' && (
               <div className="space-y-6">
@@ -373,7 +383,7 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <button
-                    onClick={() => dispatch(setScanModalOpen(true))}
+                    onClick={() => dispatch(setActiveTab('scan'))}
                     className="btn-primary text-xs flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700"
                   >
                     <Terminal size={13} />
@@ -385,7 +395,7 @@ export default function Dashboard() {
                   searchQuery={searchQuery}
                   selectedSeverity={severityFilter}
                   isZeroData={isZeroData}
-                  onTriggerScan={() => dispatch(setScanModalOpen(true))}
+                  onTriggerScan={() => dispatch(setActiveTab('scan'))}
                 />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -426,11 +436,7 @@ export default function Dashboard() {
       </div>
 
       {/* Automated Scan Orchestration Modal (Image 2 Workflow) */}
-      <ScanModal
-        isOpen={scanModalOpen}
-        onClose={() => dispatch(setScanModalOpen(false))}
-        onScanComplete={() => refreshAll(targetUrl)}
-      />
+      <ScanDock />
     </div>
   )
 }

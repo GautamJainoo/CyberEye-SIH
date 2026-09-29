@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Zap, FileText, Download, ChevronRight, Clock, CheckCircle2, Globe } from 'lucide-react'
 import { useToast } from './Toast'
 import { useAppSelector } from '../store'
+import { DEFAULT_WEBSITE_URL } from '../lib/targets'
 
 interface HeroBannerProps {
   onRunCheck?: () => void
@@ -20,7 +21,7 @@ export default function HeroBanner({
   onDownloadPdf,
   lastCheckedTime = 'Never',
   overallScore = null,
-  targetUrl = 'http://127.0.0.1:3000',
+  targetUrl = DEFAULT_WEBSITE_URL,
 }: HeroBannerProps) {
   const { toast } = useToast()
   const heroFindings = useAppSelector((st) => st.findings.items)

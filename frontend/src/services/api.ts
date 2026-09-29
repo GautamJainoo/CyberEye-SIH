@@ -7,6 +7,7 @@ export const API_ORIGIN = API_BASE.replace(/\/api$/, '')
 export interface BackendHealth {
   status: string
   repo_url?: string
+  website_url?: string
   target_commit: string
   target_healthy: boolean
   target_message: string
@@ -172,7 +173,28 @@ export async function fetchFindings(targetUrl?: string): Promise<FindingsRespons
   }
 }
 
-export async function triggerScan(profile: string = 'lite', tools?: string[]): Promise<ScanResponse | null> {
+export interface ScanLive {
+  running: boolean
+  scan_id: string | null
+  current: string
+  done: number
+  total: number
+  percent: number
+  lines: string[]
+  status?: string
+}
+
+export async function fetchScanLive(): Promise<ScanLive | null> {
+  try {
+    const res = await fetch(`${API_BASE}/scan/live`)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function triggerScan(profile: string = 'lite', tools?: string[]): Promise<{ status: string } | null> {
   try {
     const res = await fetch(`${API_BASE}/scan`, {
       method: 'POST',

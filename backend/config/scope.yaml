@@ -1,5 +1,6 @@
-scope_id: worldmonitor-local-assessment-001
+scope_id: scope-264e51
 repo_url: https://github.com/koala73/worldmonitor
+website_url: https://www.worldmonitor.app
 commit_sha: 0d5c618e4307414546a9be84a482ac06b7d56749
 local_path: target
 allowed_hosts:
@@ -19,4 +20,4 @@ profile: lite
 max_requests_per_probe: 20
 max_scan_minutes: 15
 approved_by: security-analyst
-approved_at: '2026-09-28T19:40:57.696186+00:00'
+approved_at: '2026-09-29T16:51:37.745313+00:00'

@@ -10,8 +10,9 @@ const CENTER = SIZE / 2
 const MAX_RADIUS = 74
 
 function polarToCartesian(angle: number, radius: number) {
-  const x = CENTER + radius * Math.sin(angle)
-  const y = CENTER - radius * Math.cos(angle)
+  // Round so Node SSR and the browser emit the same point string.
+  const x = Math.round((CENTER + radius * Math.sin(angle)) * 100) / 100
+  const y = Math.round((CENTER - radius * Math.cos(angle)) * 100) / 100
   return { x, y }
 }
 

@@ -5,6 +5,7 @@ import { FileDown, FileText, Code2, Loader2, Download } from 'lucide-react'
 import { useToast } from './Toast'
 import { useAppSelector } from '../store'
 import { API_BASE } from '../services/api'
+import { DEFAULT_WEBSITE_URL } from '../lib/targets'
 
 interface ReportSummaryProps {
   onSelectSeverity?: (sev: string) => void
@@ -19,7 +20,7 @@ const RISK_TONE: Record<string, string> = {
   Critical: 'text-red-700 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-950/60 dark:border-red-800',
 }
 
-export default function ReportSummary({ onSelectSeverity, targetUrl = 'http://127.0.0.1:3000' }: ReportSummaryProps) {
+export default function ReportSummary({ onSelectSeverity, targetUrl = DEFAULT_WEBSITE_URL }: ReportSummaryProps) {
   const { toast } = useToast()
   const summary = useAppSelector((s) => s.summary.data)
   const [downloading, setDownloading] = useState<string | null>(null)

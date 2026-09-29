@@ -72,10 +72,15 @@ class SemgrepAdapter:
             "--metrics=off",
             "--json",
             f"--output={report_file}",
+            "--jobs=4",
+            "--timeout=20",
             "--exclude=node_modules",
             "--exclude=dist",
             "--exclude=build",
             "--exclude=.git",
+            "--exclude=.next",
+            "--exclude=coverage",
+            "--exclude=pro",
         ]
 
         if custom_rules_dir and custom_rules_dir.exists():

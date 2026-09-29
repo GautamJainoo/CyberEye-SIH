@@ -108,11 +108,10 @@ class GitleaksAdapter:
             "--report-format=json",
             f"--report-path={report_file}",
             "--log-level=warn",
+            "--no-git",
         ]
         if config_path.exists():
             cmd.append(f"--config={config_path}")
-        if not (Path(target_path) / ".git").exists():
-            cmd.append("--no-git")  # plain directory (e.g. calibration fixture)
 
         start_time = datetime.now(timezone.utc).isoformat()
         t0 = time.time()

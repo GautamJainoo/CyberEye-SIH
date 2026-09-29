@@ -7,6 +7,7 @@ and normalizer integration.
 from __future__ import annotations
 
 import json
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -48,6 +49,16 @@ class Orchestrator:
         self.profiles_path = profiles_path or (self.base_dir / "config" / "profiles.yaml")
         self.normalizer = Normalizer(self.db)
         self.target_mgr = TargetManager(self.base_dir, db=self.db, scope_manifest=self.manifest)
+        self.live_log: List[str] = []
+        self._live_lock = threading.Lock()
+        self.live: Dict[str, Any] = {
+            "running": False,
+            "scan_id": None,
+            "current": "",
+            "done": 0,
+            "total": 0,
+            "percent": 0,
+        }
 
     def load_profile(self, profile_name: str = "lite") -> Dict[str, Any]:
         if not self.profiles_path.exists():
@@ -62,6 +73,7 @@ class Orchestrator:
         selected_tools: Optional[List[str]] = None,
         output_base_dir: Optional[Path] = None,
         progress: Optional[Callable[[str, str, str], None]] = None,
+        start_dynamic: Optional[threading.Event] = None,
     ) -> Dict[str, Any]:
         """
         Executes an end-to-end security assessment scan.
@@ -87,6 +99,34 @@ class Orchestrator:
 
         commit_sha = self.manifest.commit_sha
         build_id = f"build-{commit_sha[:8]}"
+
+        selected_names = [t for t in active_tools if t in (
+            "review", "gitleaks", "osv", "semgrep", "zap", "probes"
+        )]
+        with self._live_lock:
+            self.live = {
+                "running": True,
+                "scan_id": scan_id,
+                "current": "starting",
+                "done": 0,
+                "total": len(selected_names) or 1,
+                "percent": 0,
+            }
+        self.live_log = [f"[scan {scan_id}] RUNNING tools: {', '.join(active_tools)}"]
+
+        def emit(tool: str, status: str, detail: str) -> None:
+            line = f"[{tool}] {status}" + (f": {detail}" if detail else "")
+            with self._live_lock:
+                self.live_log.append(line)
+                if status == "running":
+                    self.live["current"] = tool
+                elif status in ("done", "failed"):
+                    self.live["done"] = int(self.live["done"]) + 1
+                    total = int(self.live["total"]) or 1
+                    self.live["percent"] = min(99, round(100 * int(self.live["done"]) / total))
+                    self.live["current"] = tool
+            if progress:
+                progress(tool, status, detail)
 
         # Initialize scan record in DB
         with self.db.get_connection() as conn:
@@ -114,11 +154,14 @@ class Orchestrator:
 
         custom_semgrep_dir = self.base_dir / "rules" / "semgrep" / "worldmonitor"
 
+        dynamic_tools = {"zap", "probes"}
+
         def execute(tool_name: str):
             """Run + parse one tool. Thread-safe: touches no database."""
+            if tool_name in dynamic_tools and start_dynamic is not None:
+                start_dynamic.wait()
             adapter = adapters[tool_name]
-            if progress:
-                progress(tool_name, "running", "")
+            emit(tool_name, "running", "")
             kwargs = dict(
                 target_path=target_path,
                 output_dir=evidence_dir,
@@ -133,25 +176,19 @@ class Orchestrator:
                 run = adapter.run(**kwargs)
                 candidates = adapter.parse(run, target_path)
             except Exception as e:
-                if progress:
-                    progress(tool_name, "failed", str(e)[:300])
+                emit(tool_name, "failed", str(e)[:300])
                 return tool_name, None, [], str(e)
-            if progress:
-                progress(tool_name, "done", f"{len(candidates)} candidate(s) in {run.duration_seconds:.0f}s")
+            emit(tool_name, "done", f"{len(candidates)} candidate(s) in {run.duration_seconds:.0f}s")
             return tool_name, run, candidates, None
 
-        # Static tools and the slow ZAP scan run concurrently; the probes run afterwards so their
-        # 3s request timeouts are not distorted by ZAP's active-scan load on the target.
+        # All scanners share one pool. ZAP and probes wait on start_dynamic when the
+        # pipeline still has to boot the local target; static tools do not.
         selected = [t for t in active_tools if t in adapters]
-        phase1 = [t for t in selected if t != "probes"]
-        phase2 = [t for t in selected if t == "probes"]
         results: Dict[str, Any] = {}
-        if phase1:
-            with ThreadPoolExecutor(max_workers=len(phase1)) as pool:
-                for res in pool.map(execute, phase1):
+        if selected:
+            with ThreadPoolExecutor(max_workers=16) as pool:
+                for res in pool.map(execute, selected):
                     results[res[0]] = res
-        for t in phase2:
-            results[t] = execute(t)
 
         for tool_name in selected:  # keep the caller's tool order for recording
             _, run, candidates, error = results[tool_name]
@@ -208,6 +245,11 @@ class Orchestrator:
             actor_id="wmsa_orchestrator",
             payload={"scan_id": scan_id, "profile": profile_name, "metrics": metrics},
         )
+
+        with self._live_lock:
+            self.live["running"] = False
+            self.live["percent"] = 100
+            self.live["current"] = "done"
 
         return {
             "scan_id": scan_id,

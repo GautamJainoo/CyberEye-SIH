@@ -8,6 +8,7 @@ import {
 import { Vulnerability, Status } from '../types'
 import { severityClass, statusClass } from '../utils'
 import { useToast } from './Toast'
+import { API_ORIGIN } from '../services/api'
 import { useAppDispatch } from '../store'
 import {
   updateStatusOptimistic,
@@ -181,6 +182,17 @@ export default function VulnModal({ vuln, onClose, onStatusChange }: Props) {
             <X size={15} />
           </button>
         </div>
+
+        {vuln.backendId && (
+          <a href={`/findings/${vuln.backendId}`} className="block px-6 py-3 border-b border-slate-100 dark:border-slate-800">
+            <img
+              src={`${API_ORIGIN}/api/proof/${vuln.backendId}.png`}
+              alt={`Proof card for ${vuln.name}`}
+              className="w-full max-h-48 object-cover object-top rounded-lg border border-slate-200 dark:border-slate-700"
+              onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }}
+            />
+          </a>
+        )}
 
         {/* SIH Navigation Tabs inside modal */}
         <div className="px-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-4 bg-slate-50/50 dark:bg-slate-900/50 text-xs">

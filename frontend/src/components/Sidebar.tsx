@@ -39,9 +39,6 @@ export default function Sidebar({
   const { theme, toggleTheme } = useTheme()
 
   const handleNavClick = (id: string, _label: string) => {
-    if (id === 'scan') {
-      onOpenScanModal?.()
-    }
     onSelectTab?.(id)
   }
 

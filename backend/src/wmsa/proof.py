@@ -26,9 +26,14 @@ SEV_COLOR = {"CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#eab308", "LOW
 
 
 def chrome_binary() -> Optional[str]:
-    for name in ("google-chrome", "google-chrome-stable", "chromium-browser", "chromium"):
-        path = shutil.which(name)
-        if path:
+    names = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome")
+    candidates = [shutil.which(n) for n in names]
+    candidates += [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]
+    for path in candidates:
+        if path and Path(path).is_file():
             return path
     return None
 

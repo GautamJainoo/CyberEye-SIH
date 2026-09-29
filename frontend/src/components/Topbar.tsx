@@ -9,6 +9,7 @@ import { useToast } from './Toast'
 import { useTheme } from '../context/ThemeContext'
 import NotificationDropdown from './NotificationDropdown'
 import { useAppSelector } from '../store'
+import { DEFAULT_WEBSITE_URL } from '../lib/targets'
 
 interface TopbarProps {
   targetUrl: string
@@ -19,7 +20,7 @@ interface TopbarProps {
 
 // Only the isolated local target is in scope (loopback allowlist); external hosts are rejected by the backend.
 const PRESET_TARGETS = [
-  { label: 'World Monitor (local, isolated)', url: 'http://127.0.0.1:3000', status: 'In scope' },
+  { label: 'World Monitor', url: DEFAULT_WEBSITE_URL, status: 'Website' },
 ]
 
 export default function Topbar({
@@ -66,9 +67,9 @@ export default function Topbar({
 
   const triggerScan = (urlToScan: string) => {
     if (isScanning) return
-    let cleanUrl = urlToScan.trim() || 'http://127.0.0.1:3000'
+    let cleanUrl = urlToScan.trim() || DEFAULT_WEBSITE_URL
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-      cleanUrl = 'http://' + cleanUrl
+      cleanUrl = 'https://' + cleanUrl
     }
 
     onTargetUrlChange(cleanUrl)

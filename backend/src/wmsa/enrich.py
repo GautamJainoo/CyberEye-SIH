@@ -12,6 +12,7 @@ used so the dashboard is never empty. Enrichment never changes status, severity 
 from __future__ import annotations
 
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,18 +46,28 @@ METHOD_TEMPLATES = {
 }
 
 
+_table_lock = threading.Lock()
+
+
 def ensure_table(db: Database) -> None:
-    with db.get_connection() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS finding_analysis (
-                finding_id TEXT PRIMARY KEY,
-                analysis_json TEXT NOT NULL,
-                model TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-            """
-        )
+    # Enrich and proof start together. Postgres CREATE TABLE is not race-safe:
+    # both sessions insert the same pg_type row and one fails.
+    with _table_lock:
+        with db.get_connection() as conn:
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS finding_analysis (
+                        finding_id TEXT PRIMARY KEY,
+                        analysis_json TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
+            except Exception as exc:
+                if "already exists" not in str(exc).lower() and "duplicate" not in str(exc).lower():
+                    raise
 
 
 def code_context(target_dir: Path, rel_file: Optional[str], line_start: Optional[int], line_end: Optional[int],

@@ -34,9 +34,14 @@ _SENSITIVE_KEY = ("token", "secret", "jwt", "auth", "password", "passwd", "apike
 
 
 def _chrome() -> Optional[str]:
-    for n in ("google-chrome", "google-chrome-stable", "chromium-browser", "chromium"):
-        p = shutil.which(n)
-        if p:
+    names = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome")
+    candidates = [shutil.which(n) for n in names]
+    candidates += [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]
+    for p in candidates:
+        if p and Path(p).is_file():
             return p
     return None
 

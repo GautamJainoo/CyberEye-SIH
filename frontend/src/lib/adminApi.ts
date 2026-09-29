@@ -142,7 +142,7 @@ export const TOOL_METHOD: Record<string, string[]> = {
   gitleaks: ['Walk the repository files and git history.', 'Match built-in secret rules plus World Monitor allowlists.', 'Redact every value so raw secrets never reach logs or the database.', 'Report file, line and rule.'],
   'osv-scanner': ['Locate lockfiles (package-lock.json).', 'Extract exact package versions.', 'Query the OSV database for known advisories per version.', 'Report package, version and advisory IDs.'],
   zap: ['Spider the running local target to discover URLs.', 'Run passive rules on every response (headers, CSP, cookies, info leaks).', 'Run scoped active scans within the approved loopback scope.', 'Report each alert with URL, parameter and evidence.'],
-  'worldmonitor-probes': ['Read the recipe derived from the manual review.', 'Send the scoped requests to 127.0.0.1 through the scope guard.', 'Compare every response with the expected safe behaviour.', 'Emit a finding only when an expectation is violated.'],
+  'worldmonitor-probes': ['Read the recipe derived from the manual review.', 'Send the scoped requests through the scope guard.', 'Compare every response with the expected safe behaviour.', 'Emit a finding only when an expectation is violated.'],
   'gemini-review': ['Select the security-relevant source files.', 'Redact secrets and send the code to Gemini as untrusted data.', 'Ask for structure review and candidate flaws by SIH scope area.', 'Keep only findings whose quoted code really exists in the repo.'],
 }
 

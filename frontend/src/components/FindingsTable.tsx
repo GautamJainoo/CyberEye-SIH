@@ -6,6 +6,7 @@ import { severityClass, statusClass } from '../utils'
 import { ArrowUpRight, ChevronRight, Filter, Download, ArrowUpDown, Search, ShieldCheck, RefreshCw } from 'lucide-react'
 import VulnModal from './VulnModal'
 import { useToast } from './Toast'
+import { API_ORIGIN } from '../services/api'
 import { useAppDispatch, useAppSelector } from '../store'
 import {
   fetchFindingsAsync,
@@ -243,6 +244,7 @@ export default function FindingsTable({
                 <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Severity</th>
                 <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide hidden lg:table-cell">Affected Component</th>
                 <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">CVSS</th>
+                <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Proof</th>
                 <th className="px-2 py-2.5 text-left text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Status</th>
                 <th className="pr-3 py-2.5 w-6" />
               </tr>
@@ -273,6 +275,18 @@ export default function FindingsTable({
                   </td>
                   <td className="px-2 py-3">
                     <span className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">{v.cvss ?? '--'}</span>
+                  </td>
+                  <td className="px-2 py-3">
+                    {v.backendId ? (
+                      <a href={`/findings/${v.backendId}`} onClick={(e) => e.stopPropagation()} className="block w-16">
+                        <img
+                          src={`${API_ORIGIN}/api/proof/${v.backendId}.png`}
+                          alt={`Proof for ${v.name}`}
+                          className="h-10 w-16 object-cover object-top rounded border border-slate-200 dark:border-slate-700"
+                          onError={(e) => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }}
+                        />
+                      </a>
+                    ) : null}
                   </td>
                   <td className="px-2 py-3">
                     <span className={statusClass(v.status)}>{v.status}</span>

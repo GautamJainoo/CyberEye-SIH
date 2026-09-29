@@ -31,9 +31,14 @@ class TestIdentity(BaseModel):
     entitled: bool = False
 
 
+DEFAULT_REPO_URL = "https://github.com/koala73/worldmonitor"
+DEFAULT_WEBSITE_URL = "https://www.worldmonitor.app"
+
+
 class ScopeManifest(BaseModel):
     scope_id: str
     repo_url: str
+    website_url: str = DEFAULT_WEBSITE_URL
     commit_sha: str = Field(..., min_length=7, max_length=64)
     local_path: str = "target"
     allowed_hosts: List[str] = Field(

@@ -6,6 +6,7 @@ import { useAppDispatch, useAppSelector } from '../store'
 import { runWebAuditAsync } from '../store/slices/summarySlice'
 import { API_BASE } from '../services/api'
 import { formatDateTime, relativeTime } from '../lib/adminApi'
+import { DEFAULT_WEBSITE_URL } from '../lib/targets'
 
 interface Req {
   id: string; name: string; path: string; status: number | null; type: string; initiator: string
@@ -18,6 +19,8 @@ interface Page {
   request_count: number; transfer_kb: number; failed_count: number
   memory: Record<string, number>
   console_counts: { errors: number; warnings: number }
+  captured_from?: string
+  note?: string
 }
 interface Header { name: string; status: 'PASS' | 'WARN' | 'FAIL'; severity: string; value: string | null; recommendation: string; risk: string | null; cwe?: string }
 interface Security { origin: string; protocol: string; connection_secure: boolean; http_redirects_to_https: boolean | null; security_headers: Header[]; score: number; overall_status: string; certificate: { tls_error?: string | null } }
@@ -40,7 +43,7 @@ interface Props { targetUrl?: string; onInspectVuln?: (tag?: string) => void }
 
 // Everything below comes from a real headless-Chrome session against the in-scope target (Chrome DevTools
 // Protocol) or from the Lighthouse audit. There are no assumed numbers; unavailable values show "--".
-export default function ChromeDevToolsSuite({ targetUrl = 'http://127.0.0.1:3000', onInspectVuln }: Props) {
+export default function ChromeDevToolsSuite({ targetUrl = DEFAULT_WEBSITE_URL, onInspectVuln }: Props) {
   const dispatch = useAppDispatch()
   const { auditRunning, data: summary } = useAppSelector((s) => s.summary)
   const audit = summary?.web_audit ?? null
@@ -125,7 +128,7 @@ export default function ChromeDevToolsSuite({ targetUrl = 'http://127.0.0.1:3000
       </div>
 
       {err && <div className="p-3 text-xs text-red-500">{err}</div>}
-      {page && <div className="px-4 py-1.5 text-[11px] text-slate-500 border-b border-slate-200 dark:border-slate-800">Captured {relativeTime(page.captured_at)} from {targetUrl} · page title: {page.title || '--'}</div>}
+      {page && <div className="px-4 py-1.5 text-[11px] text-slate-500 border-b border-slate-200 dark:border-slate-800">Captured {relativeTime(page.captured_at)} from {page.captured_from || targetUrl}{page.note ? ` · ${page.note}` : ''} · page title: {page.title || '--'}</div>}
 
       {tab === 'network' && (
         <div>
@@ -188,6 +191,10 @@ export default function ChromeDevToolsSuite({ targetUrl = 'http://127.0.0.1:3000
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
+              ['DOMContentLoaded', page?.dcl_ms != null ? `${page.dcl_ms} ms` : '--'],
+              ['Load', page?.load_ms != null ? `${page.load_ms} ms` : '--'],
+              ['Last request', page ? `${page.span_ms} ms` : '--'],
+              ['Captured transfer', page ? `${page.transfer_kb.toFixed(1)} kB / ${page.request_count} req` : '--'],
               ['First Contentful Paint', lh?.fcp_ms != null ? `${(lh.fcp_ms / 1000).toFixed(2)} s` : '--'],
               ['Largest Contentful Paint', lh?.lcp_ms != null ? `${(lh.lcp_ms / 1000).toFixed(2)} s` : '--'],
               ['Total Blocking Time', na(lh?.tbt_ms != null ? Math.round(lh.tbt_ms) : null, ' ms')],

@@ -7,6 +7,7 @@ lifecycle state machine, and report generator.
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -24,7 +25,7 @@ from wmsa.orchestrator import Orchestrator
 from wmsa.patching import PatchManager
 from wmsa.report import ReportExporter
 from wmsa.retest import RetestEngine
-from wmsa.scope import ScopeGuard, load_scope_manifest
+from wmsa.scope import DEFAULT_WEBSITE_URL, ScopeGuard, load_scope_manifest
 from wmsa.target import TargetManager
 from wmsa.devtools import DevToolsEngine
 from wmsa import dashboard as dashboard_mod, enrich as enrich_mod, pipeline as pipeline_mod, proof as proof_mod, webaudit as webaudit_mod
@@ -90,7 +91,7 @@ class RetestTriggerRequest(BaseModel):
 
 class TargetConfigRequest(BaseModel):
     repo_url: str
-    website_url: Optional[str] = "http://127.0.0.1:3000"
+    website_url: Optional[str] = DEFAULT_WEBSITE_URL
     commit_sha: Optional[str] = None
     reset_db: bool = True
 
@@ -117,6 +118,7 @@ def api_health():
     return {
         "status": "online",
         "repo_url": manifest.repo_url,
+        "website_url": manifest.website_url,
         "target_commit": manifest.commit_sha,
         "target_healthy": healthy,
         "target_message": msg,
@@ -171,20 +173,24 @@ def list_findings(
     severity: Optional[str] = None,
     target_url: Optional[str] = None,
 ):
+    target_label = load_scope_manifest().website_url
     if target_url:
         from wmsa.live_scanner import _normalize_url
-        _require_in_scope(target_url)  # external scanning is out of scope
-        clean_url, domain = _normalize_url(target_url)
-        if not devtools_engine._is_worldmonitor(domain):
-            custom_findings = devtools_engine.get_custom_target_findings(target_url)
-            filtered = custom_findings
-            if status:
-                filtered = [f for f in filtered if f.get("status", "").upper() == status.upper()]
-            if category:
-                filtered = [f for f in filtered if f.get("category", "").lower() == category.lower()]
-            if severity:
-                filtered = [f for f in filtered if f.get("severity", "").upper() == severity.upper()]
-            return {"total": len(filtered), "findings": filtered, "target": domain, "live_scan": True}
+        host = _host_of(target_url)
+        target_label = target_url
+        if host in {"127.0.0.1", "localhost"}:
+            _require_in_scope(target_url)  # external scanning is out of scope
+            clean_url, domain = _normalize_url(target_url)
+            if not devtools_engine._is_worldmonitor(domain):
+                custom_findings = devtools_engine.get_custom_target_findings(target_url)
+                filtered = custom_findings
+                if status:
+                    filtered = [f for f in filtered if f.get("status", "").upper() == status.upper()]
+                if category:
+                    filtered = [f for f in filtered if f.get("category", "").lower() == category.lower()]
+                if severity:
+                    filtered = [f for f in filtered if f.get("severity", "").upper() == severity.upper()]
+                return {"total": len(filtered), "findings": filtered, "target": domain, "live_scan": True}
 
     query = "SELECT * FROM findings WHERE 1=1"
     params = []
@@ -219,7 +225,7 @@ def list_findings(
             ).fetchone()["c"]
             findings.append(data)
 
-    return {"total": len(findings), "findings": findings, "target": "worldmonitor.app"}
+    return {"total": len(findings), "findings": findings, "target": target_label}
 
 
 @api_app.get("/api/findings/{finding_id}")
@@ -384,8 +390,32 @@ def admin_review_notes():
 
 @api_app.post("/api/scan")
 def trigger_scan(req: ScanTriggerRequest):
-    res = orchestrator.run_scan(profile_name=req.profile, selected_tools=req.tools)
-    return res
+    with orchestrator._live_lock:
+        if orchestrator.live.get("running"):
+            return {"status": "already_running", **orchestrator.live, "lines": list(orchestrator.live_log)}
+        orchestrator.live["running"] = True
+        orchestrator.live["current"] = "starting"
+        orchestrator.live["percent"] = 0
+
+    def job() -> None:
+        try:
+            orchestrator.run_scan(profile_name=req.profile, selected_tools=req.tools)
+        except Exception as exc:
+            orchestrator.live_log.append(f"[scan] failed: {exc}")
+        finally:
+            with orchestrator._live_lock:
+                orchestrator.live["running"] = False
+                if int(orchestrator.live.get("percent") or 0) < 100:
+                    orchestrator.live["current"] = "failed"
+
+    threading.Thread(target=job, daemon=True).start()
+    return {"status": "started"}
+
+
+@api_app.get("/api/scan/live")
+def scan_live():
+    with orchestrator._live_lock:
+        return {"lines": list(orchestrator.live_log), **orchestrator.live}
 
 
 @api_app.post("/api/triage/{finding_id}")
@@ -489,6 +519,12 @@ def search_intel(q: str = Query(..., min_length=1), limit: int = 50):
 
 # --- Chrome DevTools Suite Endpoints ---
 
+def _host_of(url: str) -> str:
+    from urllib.parse import urlparse
+    raw = url if "://" in url else f"https://{url}"
+    return (urlparse(raw).hostname or "").lower()
+
+
 def _require_in_scope(url: str) -> str:
     """Only loopback / manifest-approved targets may be inspected (no external scanning)."""
     try:
@@ -497,43 +533,61 @@ def _require_in_scope(url: str) -> str:
         raise HTTPException(status_code=403, detail=f"Out of scope: {e}")
 
 
+# Public website is a label. Live DevTools load the isolated clone, never production.
+ISOLATED_CAPTURE_URL = "http://127.0.0.1:3000"
+
+
+def _live_capture_url(target_url: str) -> str:
+    host = _host_of(target_url)
+    if host in {"127.0.0.1", "localhost"}:
+        return _require_in_scope(target_url)
+    if host and host == _host_of(load_scope_manifest().website_url):
+        return _require_in_scope(ISOLATED_CAPTURE_URL)
+    raise HTTPException(status_code=403, detail="Live capture is limited to the isolated target")
+
+
+def _annotate_page(page: Any, target_url: str, capture_url: str) -> Any:
+    if not isinstance(page, dict):
+        return page
+    page["captured_from"] = capture_url
+    if _host_of(target_url) not in {"127.0.0.1", "localhost"}:
+        page["note"] = "Public site is not opened. This capture is the isolated clone."
+    return page
+
+
 @api_app.get("/api/devtools/network")
-def get_devtools_network(target_url: str = "http://127.0.0.1:3000", refresh: bool = False):
-    _require_in_scope(target_url)
+def get_devtools_network(target_url: str = DEFAULT_WEBSITE_URL, refresh: bool = False):
+    capture_url = _live_capture_url(target_url)
     if refresh:
-        devtools_engine.get_page_info(target_url, refresh=True)  # forces a fresh browser capture
-    return {"requests": devtools_engine.get_network_requests(target_url),
-            "page": devtools_engine.get_page_info(target_url)}
+        devtools_engine.get_page_info(capture_url, refresh=True)
+    page = _annotate_page(devtools_engine.get_page_info(capture_url), target_url, capture_url)
+    return {"requests": devtools_engine.get_network_requests(capture_url), "page": page}
 
 
 @api_app.get("/api/devtools/page")
-def get_devtools_page(target_url: str = "http://127.0.0.1:3000"):
-    _require_in_scope(target_url)
-    return devtools_engine.get_page_info(target_url)
+def get_devtools_page(target_url: str = DEFAULT_WEBSITE_URL):
+    capture_url = _live_capture_url(target_url)
+    return _annotate_page(devtools_engine.get_page_info(capture_url), target_url, capture_url)
 
 
 @api_app.get("/api/devtools/security")
-def get_devtools_security(target_url: str = "http://127.0.0.1:3000"):
-    _require_in_scope(target_url)
-    return devtools_engine.get_security_analysis(target_url)
+def get_devtools_security(target_url: str = DEFAULT_WEBSITE_URL):
+    return devtools_engine.get_security_analysis(_live_capture_url(target_url))
 
 
 @api_app.get("/api/devtools/performance")
-def get_devtools_performance(target_url: str = "http://127.0.0.1:3000"):
-    _require_in_scope(target_url)
-    return devtools_engine.get_performance_telemetry(target_url)
+def get_devtools_performance(target_url: str = DEFAULT_WEBSITE_URL):
+    return devtools_engine.get_performance_telemetry(_live_capture_url(target_url))
 
 
 @api_app.get("/api/devtools/storage")
-def get_devtools_storage(target_url: str = "http://127.0.0.1:3000"):
-    _require_in_scope(target_url)
-    return devtools_engine.get_storage_audit(target_url)
+def get_devtools_storage(target_url: str = DEFAULT_WEBSITE_URL):
+    return devtools_engine.get_storage_audit(_live_capture_url(target_url))
 
 
 @api_app.get("/api/devtools/console-log")
-def get_devtools_console_log(target_url: str = "http://127.0.0.1:3000"):
-    _require_in_scope(target_url)
-    return devtools_engine.get_console_log(target_url)
+def get_devtools_console_log(target_url: str = DEFAULT_WEBSITE_URL):
+    return devtools_engine.get_console_log(_live_capture_url(target_url))
 
 
 @api_app.post("/api/devtools/console/exec")
@@ -544,14 +598,15 @@ def exec_devtools_console(req: DevToolsConsoleRequest):
 # --- Network Inspect View Endpoints ---
 
 @api_app.get("/api/network/inspect")
-def get_network_inspect(target_url: str = "http://127.0.0.1:3000"):
-    _require_in_scope(target_url)
-    requests = devtools_engine.get_network_requests(target_url)
+def get_network_inspect(target_url: str = DEFAULT_WEBSITE_URL):
+    capture_url = _live_capture_url(target_url)
+    requests = devtools_engine.get_network_requests(capture_url)
     metrics = [
         {
             "id": r["id"], "name": r["name"], "path": r["path"],
             "type": "API Endpoint" if r["path"].startswith("/api") else r["type"],
-            "latencyMs": r["time"], "startMs": round(r["offsetPct"]),  # percent of the load window "pageSize": r["size"],
+            "latencyMs": r["time"], "startMs": round(r["offsetPct"]),
+            "pageSize": r["size"],
             "httpStatus": r["status"], "protocol": r.get("protocol"),
             "securityStatus": "Flagged" if r.get("isVuln") else "No finding",
             "findingTag": r.get("vulnTag"), "findingDesc": r.get("vulnDesc"),
@@ -560,7 +615,7 @@ def get_network_inspect(target_url: str = "http://127.0.0.1:3000"):
         for r in requests
     ]
     timed = [r["time"] for r in requests if r["time"] is not None]
-    perf = devtools_engine.get_performance_telemetry(target_url)
+    perf = devtools_engine.get_performance_telemetry(capture_url)
     ttfb_val = perf.get("metrics", {}).get("ttfb", {}).get("value")
     doc = next((r for r in requests if r["type"] == "Doc"), None)
     total_kb = sum(float(r["size"].split()[0]) for r in requests if r.get("size"))
@@ -572,6 +627,8 @@ def get_network_inspect(target_url: str = "http://127.0.0.1:3000"):
         "httpProtocol": (doc or {}).get("protocol") or "--",
         "failedRequests": sum(1 for r in requests if r.get("failed")),
         "live": True,
+        "capturedFrom": capture_url,
+        "note": None if _host_of(target_url) in {"127.0.0.1", "localhost"} else "Public site is not opened. This capture is the isolated clone.",
     }
     return {"summary": summary, "metrics": metrics}
 

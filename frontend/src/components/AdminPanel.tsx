@@ -11,8 +11,10 @@ import {
   configureTarget,
   resetDatabase,
   triggerScan,
+  fetchScanLive,
   BackendHealth
 } from '../services/api'
+import { DEFAULT_REPO_URL, DEFAULT_WEBSITE_URL } from '../lib/targets'
 
 interface AdminPanelProps {
   onScanComplete?: () => void
@@ -21,8 +23,8 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ onScanComplete, onNavigateToFindings }: AdminPanelProps) {
   const { toast } = useToast()
-  const [repoUrl, setRepoUrl] = useState('https://github.com/koala73/worldmonitor')
-  const [websiteUrl, setWebsiteUrl] = useState('http://127.0.0.1:3000')
+  const [repoUrl, setRepoUrl] = useState(DEFAULT_REPO_URL)
+  const [websiteUrl, setWebsiteUrl] = useState(DEFAULT_WEBSITE_URL)
   const [commitSha, setCommitSha] = useState('')
   const [resetDbOnConfigure, setResetDbOnConfigure] = useState(true)
 
@@ -36,11 +38,33 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
     const data = await fetchHealth()
     setHealth(data)
     if (data?.repo_url) setRepoUrl(data.repo_url)
+    if (data?.website_url) setWebsiteUrl(data.website_url)
     if (data?.target_commit && !commitSha) setCommitSha(data.target_commit.slice(0, 8))
   }
 
   useEffect(() => {
     loadHealth()
+  }, [])
+
+  useEffect(() => {
+    let stop = false
+    const tick = async () => {
+      const live = await fetchScanLive()
+      if (stop || !live) return
+      if (live.lines?.length) {
+        setLogs((prev) => {
+          const extra = live.lines.filter((line) => !prev.includes(line))
+          return extra.length ? [...prev, ...extra] : prev
+        })
+      }
+      setIsScanning(!!live.running)
+    }
+    tick()
+    const timer = setInterval(tick, 1500)
+    return () => {
+      stop = true
+      clearInterval(timer)
+    }
   }, [])
 
   const handleConfigureTarget = async () => {
@@ -68,7 +92,7 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
       setLogs((prev) => [
         ...prev,
         `[Git] Successfully cloned / checked out ${res.commit_sha.slice(0, 8)}`,
-        `[Scope] Updated config/scope.yaml with strict loopback enforcement`,
+        `[Scope] Saved repo ${res.repo_url} and website ${res.website_url}`,
         `[Database] Initialized clean baseline (findings: 0)`,
       ])
       toast('success', 'Target Configured & Cloned', `Target repo ready at commit ${res.commit_sha.slice(0, 8)}.`)
@@ -81,34 +105,18 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
   }
 
   const handleRunScan = async () => {
-    setIsScanning(true)
     setLogs((prev) => [
       ...prev,
       `[WMSA Orchestrator] Starting multi-tool security assessment (lite profile)...`,
-      `[Modules] Gemini review + Semgrep + Gitleaks + OSV-Scanner + probes (use the full pipeline for ZAP and Lighthouse)`,
+      `[Modules] Gemini review + Semgrep + Gitleaks + OSV-Scanner + probes`,
     ])
-
     const res = await triggerScan('lite')
-    setIsScanning(false)
-
-    if (res) {
-      setLogs((prev) => [
-        ...prev,
-        `[Scan ${res.scan_id}] ${res.status}: ${res.findings_count} finding(s) ingested in ${res.duration_seconds.toFixed(1)}s`,
-        ...res.tool_runs.map((t) => `[Tool: ${t.tool_name} ${t.tool_version}] exit ${t.exit_code} in ${t.duration_seconds.toFixed(1)}s`),
-        ...Object.entries(res.tool_errors || {}).map(([tool, err]) => `[Tool: ${tool}] FAILED: ${err}`),
-      ])
-      toast(
-        Object.keys(res.tool_errors || {}).length ? 'warning' : 'success',
-        'Assessment finished',
-        `${res.findings_count} finding(s) ingested; ${Object.keys(res.tool_errors || {}).length} tool(s) failed.`
-      )
-      await loadHealth()
-      onScanComplete?.()
-    } else {
+    if (!res) {
       setLogs((prev) => [...prev, `[Error] Scan execution failed. Check backend server.`])
-      toast('error', 'Scan Failed', 'Backend scan failed to complete.')
+      toast('error', 'Scan Failed', 'Backend scan failed to start.')
+      return
     }
+    setIsScanning(true)
   }
 
   const handleResetDatabase = async () => {
@@ -147,7 +155,7 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
             </h1>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Specify the GitHub repository and target website URL to audit. All scans strictly enforce loopback isolation.
+            GitHub repo and website start filled in. Change either field before you configure.
           </p>
         </div>
 
@@ -197,7 +205,7 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
                 type="text"
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
-                placeholder="https://github.com/koala73/worldmonitor"
+                placeholder={DEFAULT_REPO_URL}
                 className="w-full pl-9 pr-3 py-2 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
@@ -217,12 +225,12 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
                 type="text"
                 value={websiteUrl}
                 onChange={(e) => setWebsiteUrl(e.target.value)}
-                placeholder="http://127.0.0.1:3000"
+                placeholder={DEFAULT_WEBSITE_URL}
                 className="w-full pl-9 pr-3 py-2 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Local isolated URL for OWASP ZAP and custom behavioral probes.
+              Website under assessment. Edit this if you want a different URL.
             </p>
           </div>
         </div>
@@ -338,7 +346,7 @@ export default function AdminPanel({ onScanComplete, onNavigateToFindings }: Adm
             <span>Strict Fail-Closed</span>
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
-            Host: {websiteUrl} (Loopback Only)
+            Website: {websiteUrl}
           </p>
         </div>
       </div>

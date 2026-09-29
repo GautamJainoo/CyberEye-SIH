@@ -6,7 +6,7 @@ End-to-end assessment pipeline: setup -> Gemini review -> Semgrep -> Gitleaks ->
 from __future__ import annotations
 
 import threading
-import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -62,35 +62,49 @@ def start(db: Database, orchestrator, fresh: bool = True, do_setup: bool = True)
 def _run(db: Database, orchestrator, fresh: bool, do_setup: bool) -> None:
     from wmsa import enrich, proof, setup_assistant
 
-    try:
-        if fresh:
-            db.purge_assessment_data()
-            from wmsa.paths import get_base_dir
-            for old in (get_base_dir() / "evidence" / "proof").glob("*.png"):
-                old.unlink(missing_ok=True)  # stale proofs of purged findings
-        if do_setup:
-            _set("setup", "running")
-            try:
-                plan = setup_assistant.plan_setup()
-                result = setup_assistant.apply_setup(plan)
+    # ZAP, probes, and Lighthouse need the local target. Static tools do not.
+    target_ready = threading.Event()
+    if not do_setup:
+        target_ready.set()
+
+    def on_progress(tool: str, status: str, detail: str) -> None:
+        _set(tool, status, detail)
+
+    def setup_task() -> None:
+        _set("setup", "running")
+        try:
+            plan = setup_assistant.plan_setup()
+            result = setup_assistant.apply_setup(plan)
+            with _lock:
                 _state["setup"] = {"plan": plan, "result": result}
-                _set("setup", "done" if result["healthy"] else "failed",
-                     f"plan by {plan['source']}; healthy={result['healthy']}; rejected={len(result['rejected_by_guard'])}")
-            except Exception as e:
-                _set("setup", "failed", str(e)[:200])
-        else:
-            _set("setup", "skipped")
+            _set(
+                "setup",
+                "done" if result["healthy"] else "failed",
+                f"plan by {plan['source']}; healthy={result['healthy']}; rejected={len(result['rejected_by_guard'])}",
+            )
+        except Exception as e:
+            _set("setup", "failed", str(e)[:200])
+        finally:
+            target_ready.set()
 
-        def on_progress(tool: str, status: str, detail: str) -> None:
-            _set(tool, status, detail)
-
-        result = orchestrator.run_scan("standard", selected_tools=SCAN_TOOLS, progress=on_progress)
+    def scan_task() -> None:
+        result = orchestrator.run_scan(
+            "standard",
+            selected_tools=SCAN_TOOLS,
+            progress=on_progress,
+            start_dynamic=target_ready,
+        )
         with _lock:
             _state["scan"] = {k: v for k, v in result.items() if k != "tool_runs"}
-            for tool in SCAN_TOOLS:
-                if any(s["id"] == tool and s["status"] in ("pending", "running") for s in _state["steps"]):
-                    _set(tool, "skipped", "not executed")
+            pending = [
+                s["id"] for s in _state["steps"]
+                if s["id"] in SCAN_TOOLS and s["status"] in ("pending", "running")
+            ]
+        for tool in pending:
+            _set(tool, "skipped", "not executed")
 
+    def audit_task() -> None:
+        target_ready.wait()
         _set("audit", "running")
         try:
             from wmsa import webaudit
@@ -99,6 +113,7 @@ def _run(db: Database, orchestrator, fresh: bool, do_setup: bool) -> None:
         except Exception as e:
             _set("audit", "failed", str(e)[:200])
 
+    def enrich_task() -> None:
         _set("enrich", "running")
         try:
             stats = enrich.enrich_findings(db=db, progress=lambda m: _set("enrich", "running", m))
@@ -106,12 +121,35 @@ def _run(db: Database, orchestrator, fresh: bool, do_setup: bool) -> None:
         except Exception as e:
             _set("enrich", "failed", str(e)[:200])
 
+    def proof_task() -> None:
         _set("proof", "running")
         try:
             stats = proof.build_proofs(db=db)
             _set("proof", "done" if not stats.get("error") else "failed", str(stats))
         except Exception as e:
             _set("proof", "failed", str(e)[:200])
+
+    try:
+        if fresh:
+            db.purge_assessment_data()
+            from wmsa.paths import get_base_dir
+            for old in (get_base_dir() / "evidence" / "proof").glob("*.png"):
+                old.unlink(missing_ok=True)
+
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            futures = [pool.submit(scan_task), pool.submit(audit_task)]
+            if do_setup:
+                futures.append(pool.submit(setup_task))
+            else:
+                _set("setup", "skipped")
+            scan_future = futures[0]
+            scan_future.result()
+            for fut in futures:
+                if fut is not scan_future:
+                    fut.result()
+            # Proof cards include the Groq write-up, so they start after enrich finishes.
+            enrich_task()
+            proof_task()
     finally:
         with _lock:
             _state["running"] = False

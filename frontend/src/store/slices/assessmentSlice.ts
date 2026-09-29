@@ -9,6 +9,7 @@ import {
   TargetConfigPayload,
   TargetConfigResponse,
 } from '../../services/api'
+import { DEFAULT_WEBSITE_URL } from '../../lib/targets'
 
 export interface AssessmentState {
   targetUrl: string
@@ -22,7 +23,7 @@ export interface AssessmentState {
 }
 
 const initialState: AssessmentState = {
-  targetUrl: 'http://127.0.0.1:3000',
+  targetUrl: DEFAULT_WEBSITE_URL,
   activeTab: 'dashboard',
   lastScanTime: '',
   scanModalOpen: false,

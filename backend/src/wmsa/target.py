@@ -14,7 +14,13 @@ from typing import Dict, Optional, Tuple
 import httpx
 
 from wmsa.db import Database
-from wmsa.scope import ScopeGuard, ScopeManifest, ScopeViolation, load_scope_manifest
+from wmsa.scope import (
+    DEFAULT_WEBSITE_URL,
+    ScopeGuard,
+    ScopeManifest,
+    ScopeViolation,
+    load_scope_manifest,
+)
 
 
 class TargetError(Exception):
@@ -242,6 +248,7 @@ class TargetManager:
         scope_data = {
             "scope_id": f"scope-{uuid.uuid4().hex[:6]}",
             "repo_url": repo_url,
+            "website_url": website_url or DEFAULT_WEBSITE_URL,
             "commit_sha": resolved_sha,
             "local_path": "target",
             "allowed_hosts": allowed_hosts,
@@ -271,7 +278,7 @@ class TargetManager:
             "scope_id": scope_data["scope_id"],
             "repo_url": repo_url,
             "commit_sha": resolved_sha,
-            "website_url": website_url or "http://127.0.0.1:3000",
+            "website_url": website_url or DEFAULT_WEBSITE_URL,
             "target_dir": str(self.target_dir),
         }
 

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Activity, Clock, HardDrive, Wifi, ShieldAlert, RefreshCw } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '../store'
 import { fetchNetworkInspectAsync } from '../store/slices/telemetrySlice'
+import { DEFAULT_WEBSITE_URL } from '../lib/targets'
 
 interface NetworkInspectViewProps {
   targetUrl?: string
@@ -15,10 +16,10 @@ type Filter = 'All' | 'API' | 'Flagged' | 'Failed'
 
 // Rows are the requests a real headless-Chrome session made when loading the target (see the DevTools
 // panel above). Latency, status and size are measured; nothing is estimated.
-export default function NetworkInspectView({ targetUrl = 'http://127.0.0.1:3000' }: NetworkInspectViewProps) {
+export default function NetworkInspectView({ targetUrl = DEFAULT_WEBSITE_URL }: NetworkInspectViewProps) {
   const dispatch = useAppDispatch()
   const data = useAppSelector((s) => s.telemetry.networkInspect) as any
-  const [filter, setFilter] = useState<Filter>('API')
+  const [filter, setFilter] = useState<Filter>('All')
   const [loading, setLoading] = useState(false)
 
   const summary = data?.summary
@@ -67,7 +68,7 @@ export default function NetworkInspectView({ targetUrl = 'http://127.0.0.1:3000'
         <div className="p-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Per-request measurements</h3>
-            <p className="text-[11px] text-slate-500">{filtered.length} of {rows.length} requests · target {targetUrl}</p>
+            <p className="text-[11px] text-slate-500">{filtered.length} of {rows.length} requests · captured {summary?.capturedFrom || targetUrl}{summary?.note ? ` · ${summary.note}` : ''}</p>
           </div>
           <div className="flex items-center gap-1.5 text-xs">
             {(['API', 'Flagged', 'Failed', 'All'] as Filter[]).map((f) => (
