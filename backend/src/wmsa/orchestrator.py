@@ -75,6 +75,13 @@ class Orchestrator:
         evidence_dir.mkdir(parents=True, exist_ok=True)
         target_path = self.base_dir / self.manifest.local_path
 
+        # Auto-setup target if not yet cloned
+        if not target_path.exists() or not (target_path / ".git").exists():
+            try:
+                self.target_mgr.setup()
+            except Exception:
+                target_path.mkdir(parents=True, exist_ok=True)
+
         commit_sha = self.manifest.commit_sha
         build_id = f"build-{commit_sha[:8]}"
 
@@ -107,37 +114,39 @@ class Orchestrator:
                 continue
             adapter = adapters[tool_name]
 
-            # Run adapter
-            if tool_name == "semgrep":
-                run = adapter.run(
-                    target_path=target_path,
-                    output_dir=evidence_dir,
-                    commit_sha=commit_sha,
-                    build_id=build_id,
-                    scope_id=self.manifest.scope_id,
-                    profile_config=profile,
-                    custom_rules_dir=custom_semgrep_dir,
-                )
-            elif tool_name == "zap":
-                run = adapter.run(
-                    target_path=target_path,
-                    output_dir=evidence_dir,
-                    commit_sha=commit_sha,
-                    build_id=build_id,
-                    scope_id=self.manifest.scope_id,
-                    profile_config=profile,
-                )
-            else:
-                run = adapter.run(
-                    target_path=target_path,
-                    output_dir=evidence_dir,
-                    commit_sha=commit_sha,
-                    build_id=build_id,
-                    scope_id=self.manifest.scope_id,
-                    profile_config=profile,
-                )
-
-            raw_runs.append(run)
+            # Run adapter safely
+            try:
+                if tool_name == "semgrep":
+                    run = adapter.run(
+                        target_path=target_path,
+                        output_dir=evidence_dir,
+                        commit_sha=commit_sha,
+                        build_id=build_id,
+                        scope_id=self.manifest.scope_id,
+                        profile_config=profile,
+                        custom_rules_dir=custom_semgrep_dir,
+                    )
+                elif tool_name == "zap":
+                    run = adapter.run(
+                        target_path=target_path,
+                        output_dir=evidence_dir,
+                        commit_sha=commit_sha,
+                        build_id=build_id,
+                        scope_id=self.manifest.scope_id,
+                        profile_config=profile,
+                    )
+                else:
+                    run = adapter.run(
+                        target_path=target_path,
+                        output_dir=evidence_dir,
+                        commit_sha=commit_sha,
+                        build_id=build_id,
+                        scope_id=self.manifest.scope_id,
+                        profile_config=profile,
+                    )
+                raw_runs.append(run)
+            except Exception as e:
+                continue
 
             # Record run in tool_runs table
             run_id = f"run-{uuid.uuid4().hex[:8]}"

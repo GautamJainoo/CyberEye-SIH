@@ -143,3 +143,63 @@ def test_api_intel_endpoints(client):
     data = res_search.json()
     assert "results" in data
     assert data["query"] == "lodash"
+
+
+def test_api_devtools_endpoints(client):
+    res_net = client.get("/api/devtools/network")
+    assert res_net.status_code == 200
+    assert "requests" in res_net.json()
+    assert len(res_net.json()["requests"]) > 0
+
+    res_sec = client.get("/api/devtools/security")
+    assert res_sec.status_code == 200
+    assert "security_headers" in res_sec.json()
+
+    res_perf = client.get("/api/devtools/performance")
+    assert res_perf.status_code == 200
+    assert "metrics" in res_perf.json()
+
+    res_store = client.get("/api/devtools/storage")
+    assert res_store.status_code == 200
+    assert "local_storage" in res_store.json()
+
+    res_cmd = client.post("/api/devtools/console/exec", json={"command": "status"})
+    assert res_cmd.status_code == 200
+    assert "Target URL" in res_cmd.json()["output"]
+
+
+def test_api_network_inspect(client):
+    res_inspect = client.get("/api/network/inspect")
+    assert res_inspect.status_code == 200
+    data = res_inspect.json()
+    assert "summary" in data
+    assert "metrics" in data
+    assert len(data["metrics"]) > 0
+
+    res_probe = client.post("/api/network/probe", json={"url_or_path": "/api/news"})
+    assert res_probe.status_code == 200
+
+
+def test_api_copilot_and_telemetry(client):
+    # Copilot chat
+    res_chat = client.post("/api/copilot/chat", json={"prompt": "How to fix SSRF?"})
+    assert res_chat.status_code == 200
+    data = res_chat.json()
+    assert "reply" in data
+    assert "SSRF" in data["reply"]
+
+    # Copilot recommendations
+    res_recs = client.get("/api/copilot/recommendations")
+    assert res_recs.status_code == 200
+    assert "recommendations" in res_recs.json()
+
+    # Attack surface telemetry
+    res_surface = client.get("/api/telemetry/attack-surface")
+    assert res_surface.status_code == 200
+    assert "nodes" in res_surface.json()
+
+    # Radar telemetry
+    res_radar = client.get("/api/telemetry/radar")
+    assert res_radar.status_code == 200
+    assert "radar" in res_radar.json()
+

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
 import Sidebar from '../components/Sidebar'
 import Topbar from '../components/Topbar'
 import HeroBanner from '../components/HeroBanner'
@@ -21,25 +21,55 @@ import AdminPanel from '../components/AdminPanel'
 import { Severity } from '../types'
 import { useToast } from '../components/Toast'
 import { Shield, Sparkles, Terminal, Activity, ChevronRight, Settings } from 'lucide-react'
+import { useAppDispatch, useAppSelector } from '../store'
+import {
+  toggleZeroData,
+  setZeroData,
+  setSeverityFilter,
+  setSearchQuery,
+  fetchFindingsAsync,
+} from '../store/slices/findingsSlice'
+import {
+  setActiveTab,
+  setTargetUrl,
+  setLastScanTime,
+  setScanModalOpen,
+  fetchHealthAsync,
+} from '../store/slices/assessmentSlice'
+import { fetchDevToolsAllAsync } from '../store/slices/devtoolsSlice'
+import { fetchRecommendationsAsync } from '../store/slices/copilotSlice'
+import { fetchRadarAsync, fetchAttackSurfaceAsync, fetchNetworkInspectAsync } from '../store/slices/telemetrySlice'
 
 export default function Dashboard() {
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState('dashboard')
-  const [scanModalOpen, setScanModalOpen] = useState(false)
-  const [isZeroData, setIsZeroData] = useState(false)
-  const [targetUrl, setTargetUrl] = useState('https://worldmonitor.app')
-  const [lastScanTime, setLastScanTime] = useState('28 Sep 2026, 12:52 PM')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedSeverity, setSelectedSeverity] = useState<Severity | 'All'>('All')
+  const dispatch = useAppDispatch()
+
+  const { targetUrl, activeTab, lastScanTime, scanModalOpen } = useAppSelector(
+    (state) => state.assessment
+  )
+  const { isZeroData, searchQuery, severityFilter } = useAppSelector(
+    (state) => state.findings
+  )
+
+  useEffect(() => {
+    // Initial global background telemetry bootstrap
+    dispatch(fetchFindingsAsync())
+    dispatch(fetchHealthAsync())
+    dispatch(fetchDevToolsAllAsync(targetUrl))
+    dispatch(fetchRecommendationsAsync())
+    dispatch(fetchRadarAsync())
+    dispatch(fetchAttackSurfaceAsync())
+    dispatch(fetchNetworkInspectAsync(targetUrl))
+  }, [dispatch, targetUrl])
 
   const handleScan = (url: string) => {
-    setLastScanTime('28 Sep 2026, 12:52 PM')
-    setTargetUrl(url)
+    dispatch(setLastScanTime('28 Sep 2026, 12:52 PM'))
+    dispatch(setTargetUrl(url))
   }
 
   const handleToggleZeroData = () => {
+    dispatch(toggleZeroData())
     const next = !isZeroData
-    setIsZeroData(next)
     toast(
       next ? 'info' : 'success',
       next ? 'Zero Data Mode Activated' : 'Sample Data Loaded',
@@ -51,9 +81,9 @@ export default function Dashboard() {
 
   const handleFilterSeverity = (sev: string) => {
     if (sev === 'Critical' || sev === 'High' || sev === 'Medium' || sev === 'Low') {
-      setSelectedSeverity(sev)
+      dispatch(setSeverityFilter(sev as Severity))
     } else {
-      setSelectedSeverity('All')
+      dispatch(setSeverityFilter('All'))
     }
 
     const tableEl = document.getElementById('findings-table-section')
@@ -64,9 +94,9 @@ export default function Dashboard() {
 
   const handleSelectMetric = (metricId: string) => {
     if (metricId === 'vulns' || metricId === 'best_practices') {
-      setActiveTab('vulns')
+      dispatch(setActiveTab('vulns'))
     } else if (metricId === 'performance') {
-      setActiveTab('inspect')
+      dispatch(setActiveTab('inspect'))
     }
   }
 
@@ -76,8 +106,8 @@ export default function Dashboard() {
       <Sidebar
         isZeroData={isZeroData}
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        onOpenScanModal={() => setScanModalOpen(true)}
+        onSelectTab={(tab) => dispatch(setActiveTab(tab))}
+        onOpenScanModal={() => dispatch(setScanModalOpen(true))}
       />
 
       {/* Main Content Area */}
@@ -85,8 +115,8 @@ export default function Dashboard() {
         {/* Topbar */}
         <Topbar
           targetUrl={targetUrl}
-          onTargetUrlChange={setTargetUrl}
-          onSearch={(q) => setSearchQuery(q)}
+          onTargetUrlChange={(url) => dispatch(setTargetUrl(url))}
+          onSearch={(q) => dispatch(setSearchQuery(q))}
           onScan={handleScan}
           isZeroData={isZeroData}
           onToggleZeroData={handleToggleZeroData}
@@ -96,7 +126,7 @@ export default function Dashboard() {
         <div className="px-5 lg:px-7 py-2.5 bg-white/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between text-xs backdrop-blur-sm z-10">
           <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
             <button
-              onClick={() => setActiveTab('dashboard')}
+              onClick={() => dispatch(setActiveTab('dashboard'))}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                 activeTab === 'dashboard'
                   ? 'bg-teal-500 text-white shadow-sm'
@@ -106,7 +136,7 @@ export default function Dashboard() {
               Dashboard Overview
             </button>
             <button
-              onClick={() => setActiveTab('admin')}
+              onClick={() => dispatch(setActiveTab('admin'))}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'admin'
                   ? 'bg-teal-500 text-white shadow-sm'
@@ -117,7 +147,7 @@ export default function Dashboard() {
               <span>Admin &amp; Target Setup</span>
             </button>
             <button
-              onClick={() => setActiveTab('inspect')}
+              onClick={() => dispatch(setActiveTab('inspect'))}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'inspect'
                   ? 'bg-teal-500 text-white shadow-sm'
@@ -128,14 +158,14 @@ export default function Dashboard() {
               <span>Inspect &amp; Page Speed</span>
             </button>
             <button
-              onClick={() => setScanModalOpen(true)}
+              onClick={() => dispatch(setScanModalOpen(true))}
               className="px-3 py-1.5 rounded-lg font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800/80 hover:bg-teal-100/70 dark:hover:bg-teal-900/60 transition-all cursor-pointer flex items-center gap-1.5"
             >
               <Terminal size={13} />
               <span>Run Automated Scanner</span>
             </button>
             <button
-              onClick={() => setActiveTab('vulns')}
+              onClick={() => dispatch(setActiveTab('vulns'))}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                 activeTab === 'vulns'
                   ? 'bg-teal-500 text-white shadow-sm'
@@ -145,7 +175,7 @@ export default function Dashboard() {
               Vulnerabilities &amp; PoC
             </button>
             <button
-              onClick={() => setActiveTab('ai-chat')}
+              onClick={() => dispatch(setActiveTab('ai-chat'))}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                 activeTab === 'ai-chat'
                   ? 'bg-teal-500 text-white shadow-sm'
@@ -172,7 +202,7 @@ export default function Dashboard() {
               <>
                 {/* 1. Hero Welcome Banner (Score 92/100) + Quick Actions */}
                 <HeroBanner
-                  onRunCheck={() => setScanModalOpen(true)}
+                  onRunCheck={() => dispatch(setScanModalOpen(true))}
                   onViewReport={() => {
                     const tableEl = document.getElementById('findings-table-section')
                     if (tableEl) tableEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -194,7 +224,7 @@ export default function Dashboard() {
                 {/* 3. Middle Section: Core Web Vitals (LCP, INP, CLS) + Recent Activity */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
                   <div className="lg:col-span-8 flex flex-col justify-between">
-                    <CoreWebVitals onViewAll={() => setActiveTab('inspect')} />
+                    <CoreWebVitals onViewAll={() => dispatch(setActiveTab('inspect'))} />
                   </div>
                   <div className="lg:col-span-4 flex flex-col justify-between">
                     <RecentActivity isZeroData={isZeroData} />
@@ -204,10 +234,10 @@ export default function Dashboard() {
                 {/* 4. Lower Section: Recommended Fixes + Status & Quote Cards */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
                   <div className="lg:col-span-8 flex flex-col justify-between">
-                    <RecommendedFixesCard onSelectFix={() => setActiveTab('inspect')} />
+                    <RecommendedFixesCard onSelectFix={() => dispatch(setActiveTab('inspect'))} />
                   </div>
                   <div className="lg:col-span-4 flex flex-col justify-between">
-                    <StatusAndQuote onRunNewCheck={() => setScanModalOpen(true)} />
+                    <StatusAndQuote onRunNewCheck={() => dispatch(setScanModalOpen(true))} />
                   </div>
                 </div>
 
@@ -225,7 +255,7 @@ export default function Dashboard() {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setScanModalOpen(true)}
+                      onClick={() => dispatch(setScanModalOpen(true))}
                       className="btn-primary text-xs flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700"
                     >
                       <Terminal size={13} />
@@ -259,10 +289,10 @@ export default function Dashboard() {
                     <div id="findings-table-section">
                       <FindingsTable
                         searchQuery={searchQuery}
-                        selectedSeverity={selectedSeverity}
+                        selectedSeverity={severityFilter}
                         isZeroData={isZeroData}
-                        onLoadSample={() => setIsZeroData(false)}
-                        onTriggerScan={() => setScanModalOpen(true)}
+                        onLoadSample={() => dispatch(setZeroData(false))}
+                        onTriggerScan={() => dispatch(setScanModalOpen(true))}
                       />
                     </div>
                     <AttackSurfaceMap isZeroData={isZeroData} />
@@ -288,7 +318,7 @@ export default function Dashboard() {
                 onScanComplete={() => {
                   toast('success', 'Target Ready', 'Target configured and synchronized with live assessment engine.')
                 }}
-                onNavigateToFindings={() => setActiveTab('vulns')}
+                onNavigateToFindings={() => dispatch(setActiveTab('vulns'))}
               />
             )}
 
@@ -306,7 +336,7 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <button
-                    onClick={() => setActiveTab('dashboard')}
+                    onClick={() => dispatch(setActiveTab('dashboard'))}
                     className="btn-secondary text-xs flex items-center gap-1 shrink-0"
                   >
                     <span>Back to Overview</span>
@@ -317,13 +347,13 @@ export default function Dashboard() {
                 {/* The Full Chrome DevTools Suite (Matching 5 user screenshots) */}
                 <ChromeDevToolsSuite
                   targetUrl={targetUrl}
-                  onInspectVuln={() => setActiveTab('vulns')}
+                  onInspectVuln={() => dispatch(setActiveTab('vulns'))}
                 />
 
                 {/* Per-Page Speed & Route Matrix */}
                 <NetworkInspectView
                   targetUrl={targetUrl}
-                  onInspectVuln={() => setActiveTab('vulns')}
+                  onInspectVuln={() => dispatch(setActiveTab('vulns'))}
                 />
               </div>
             )}
@@ -342,7 +372,7 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <button
-                    onClick={() => setScanModalOpen(true)}
+                    onClick={() => dispatch(setScanModalOpen(true))}
                     className="btn-primary text-xs flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700"
                   >
                     <Terminal size={13} />
@@ -352,10 +382,10 @@ export default function Dashboard() {
 
                 <FindingsTable
                   searchQuery={searchQuery}
-                  selectedSeverity={selectedSeverity}
+                  selectedSeverity={severityFilter}
                   isZeroData={isZeroData}
-                  onLoadSample={() => setIsZeroData(false)}
-                  onTriggerScan={() => setScanModalOpen(true)}
+                  onLoadSample={() => dispatch(setZeroData(false))}
+                  onTriggerScan={() => dispatch(setScanModalOpen(true))}
                 />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -399,10 +429,10 @@ export default function Dashboard() {
       {/* Automated Scan Orchestration Modal (Image 2 Workflow) */}
       <ScanModal
         isOpen={scanModalOpen}
-        onClose={() => setScanModalOpen(false)}
+        onClose={() => dispatch(setScanModalOpen(false))}
         onScanComplete={() => {
-          setIsZeroData(false)
-          setLastScanTime('28 Sep 2026, 12:52 PM')
+          dispatch(toggleZeroData())
+          dispatch(setLastScanTime('28 Sep 2026, 12:52 PM'))
         }}
       />
     </div>

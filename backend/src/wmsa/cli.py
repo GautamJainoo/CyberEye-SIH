@@ -569,11 +569,12 @@ def intel_status():
 
 @app.command()
 def server(
+    host: str = typer.Option("127.0.0.1", help="Host interface to bind dashboard API"),
     port: int = typer.Option(8000, help="Port to bind dashboard API"),
 ):
-    """Launches local WMSA API server bound strictly to 127.0.0.1."""
-    rprint(f"[bold green]Starting WMSA Local Assessment API on http://127.0.0.1:{port}...[/bold green]")
-    uvicorn.run("wmsa.api:api_app", host="127.0.0.1", port=port, log_level="info")
+    """Launches local WMSA API server."""
+    rprint(f"[bold green]Starting WMSA Local Assessment API on http://{host}:{port}...[/bold green]")
+    uvicorn.run("wmsa.api:api_app", host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":

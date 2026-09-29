@@ -1,6 +1,9 @@
+import { useState, useEffect } from 'react'
 import { HelpCircle, ChevronRight, Gauge, MousePointerClick, Layers } from 'lucide-react'
-import { coreWebVitalsData } from '../data'
+import { coreWebVitalsData as defaultVitals } from '../data'
 import { useToast } from './Toast'
+import { fetchDevToolsPerformance } from '../services/api'
+import { CoreWebVitalMetric } from '../types'
 
 interface CoreWebVitalsProps {
   onViewAll?: () => void
@@ -8,6 +11,61 @@ interface CoreWebVitalsProps {
 
 export default function CoreWebVitals({ onViewAll }: CoreWebVitalsProps) {
   const { toast } = useToast()
+  const [vitals, setVitals] = useState<CoreWebVitalMetric[]>(defaultVitals)
+
+  useEffect(() => {
+    let isMounted = true
+    const loadVitals = async () => {
+      try {
+        const perf = await fetchDevToolsPerformance()
+        if (isMounted && perf && perf.metrics) {
+          const lcpVal = perf.metrics.lcp.value
+          const inpVal = perf.metrics.inp.value
+          const clsVal = perf.metrics.cls.value
+
+          setVitals([
+            {
+              key: 'lcp',
+              title: 'LCP',
+              fullTitle: 'Largest Contentful Paint',
+              value: `${lcpVal} s`,
+              status: lcpVal <= 2.5 ? 'Good' : lcpVal <= 4.0 ? 'Needs Improvement' : 'Poor',
+              statusColor: lcpVal <= 2.5 ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500',
+              thresholds: ['0s', '2.5s', '4.0s'],
+              currentPercent: Math.min(100, Math.round((lcpVal / 4.0) * 100)),
+              description: 'Measures loading performance. For a good user experience, LCP should occur within 2.5 seconds.',
+            },
+            {
+              key: 'inp',
+              title: 'INP',
+              fullTitle: 'Interaction to Next Paint',
+              value: `${inpVal} ms`,
+              status: inpVal <= 200 ? 'Good' : inpVal <= 500 ? 'Needs Improvement' : 'Poor',
+              statusColor: inpVal <= 200 ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500',
+              thresholds: ['0ms', '200ms', '500ms'],
+              currentPercent: Math.min(100, Math.round((inpVal / 500) * 100)),
+              description: 'Measures responsiveness. An INP below 200 milliseconds indicates good responsiveness.',
+            },
+            {
+              key: 'cls',
+              title: 'CLS',
+              fullTitle: 'Cumulative Layout Shift',
+              value: `${clsVal}`,
+              status: clsVal <= 0.1 ? 'Good' : clsVal <= 0.25 ? 'Needs Improvement' : 'Poor',
+              statusColor: clsVal <= 0.1 ? 'text-emerald-500 dark:text-emerald-400' : 'text-amber-500',
+              thresholds: ['0', '0.1', '0.25'],
+              currentPercent: Math.min(100, Math.round((clsVal / 0.25) * 100)),
+              description: 'Measures visual stability. For a good user experience, pages should maintain a CLS of 0.1. or less.',
+            },
+          ])
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    loadVitals()
+    return () => { isMounted = false }
+  }, [])
 
   const handleCardClick = (title: string, desc: string) => {
     toast('info', `${title} Metric Guide`, desc)
@@ -40,7 +98,7 @@ export default function CoreWebVitals({ onViewAll }: CoreWebVitalsProps) {
 
       {/* 3 Metric Sub-Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-        {coreWebVitalsData.map((m) => {
+        {vitals.map((m) => {
           const Icon = icons[m.key as keyof typeof icons] || Gauge
           return (
             <div

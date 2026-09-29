@@ -1,15 +1,31 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Activity, Clock, HardDrive, Wifi, ShieldAlert,
   CheckCircle2, AlertTriangle, ExternalLink, RefreshCw
 } from 'lucide-react'
-import { pageSpeedMetrics, networkInspectSummary } from '../data'
-import { PageSpeedMetric } from '../types'
+import { pageSpeedMetrics as defaultMetrics, networkInspectSummary as defaultSummary } from '../data'
 import { useToast } from './Toast'
+import { useAppDispatch, useAppSelector } from '../store'
+import { fetchNetworkInspectAsync, probeEndpointAsync } from '../store/slices/telemetrySlice'
 
 interface NetworkInspectViewProps {
   targetUrl?: string
   onInspectVuln?: (findingTag?: string) => void
+}
+
+interface RowMetric {
+  id: string
+  name: string
+  path: string
+  type: string
+  speedIndex: string
+  latencyMs: number
+  ttfbMs: number
+  transferSize: string
+  statusCode: number
+  securityStatus: 'Secure' | 'Vulnerable' | 'Warning'
+  findingTag?: string
+  findingDesc?: string
 }
 
 export default function NetworkInspectView({
@@ -17,32 +33,66 @@ export default function NetworkInspectView({
   onInspectVuln,
 }: NetworkInspectViewProps) {
   const { toast } = useToast()
+  const dispatch = useAppDispatch()
+  const networkInspect = useAppSelector((state) => state.telemetry.networkInspect)
+  const isRefreshing = useAppSelector((state) => state.telemetry.isLoading)
   const [filterType, setFilterType] = useState<'All' | 'HTML Page' | 'API Endpoint' | 'Warnings'>('All')
-  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const handleRefresh = () => {
-    setIsRefreshing(true)
+  const summary = networkInspect?.summary || defaultSummary
+  const metrics: RowMetric[] = useMemo(() => {
+    if (networkInspect?.metrics && networkInspect.metrics.length > 0) {
+      return networkInspect.metrics.map((m) => ({
+        id: m.id,
+        name: m.name,
+        path: m.path,
+        type: m.type,
+        speedIndex: m.speedIndex,
+        latencyMs: m.latencyMs,
+        ttfbMs: Math.round(m.latencyMs * 0.45),
+        transferSize: m.pageSize,
+        statusCode: m.httpStatus,
+        securityStatus: m.securityStatus as 'Secure' | 'Vulnerable' | 'Warning',
+        findingTag: m.findingTag,
+        findingDesc: m.findingDesc,
+      }))
+    }
+    return defaultMetrics.map((m) => ({
+      id: m.id,
+      name: m.name,
+      path: m.path,
+      type: m.type,
+      speedIndex: m.speedIndex,
+      latencyMs: m.latencyMs,
+      ttfbMs: m.ttfbMs,
+      transferSize: m.transferSize,
+      statusCode: m.statusCode,
+      securityStatus: m.securityStatus,
+      findingTag: m.findingTag,
+    }))
+  }, [networkInspect])
+
+  const handleRefresh = async () => {
     toast('info', 'Probing Endpoints', `Measuring TTFB, HTTP/2 latency & bandwidth across ${targetUrl}...`)
-    setTimeout(() => {
-      setIsRefreshing(false)
-      toast('success', 'Telemetry Updated', 'Network speed & inspection matrix updated.')
-    }, 1000)
+    await dispatch(fetchNetworkInspectAsync(targetUrl))
+    toast('success', 'Telemetry Updated', 'Network speed & inspection matrix updated.')
   }
 
-  const filteredMetrics = pageSpeedMetrics.filter((m) => {
+  const filteredMetrics = metrics.filter((m) => {
     if (filterType === 'HTML Page') return m.type === 'HTML Page'
     if (filterType === 'API Endpoint') return m.type === 'API Endpoint'
     if (filterType === 'Warnings') return m.securityStatus !== 'Secure'
     return true
   })
 
-  const handleRowClick = (metric: PageSpeedMetric) => {
+  const handleRowClick = (metric: RowMetric) => {
     if (metric.securityStatus === 'Vulnerable') {
-      toast('warning', `Vulnerability Alert: ${metric.name}`, `${metric.findingTag} detected on endpoint ${metric.path}. Click to view PoC.`)
+      toast('warning', `Vulnerability Alert: ${metric.name}`, `${metric.findingTag || 'Vulnerability'} detected on endpoint ${metric.path}. Click to view PoC.`)
       onInspectVuln?.(metric.findingTag)
     } else {
       toast('info', `Endpoint Telemetry: ${metric.name}`, `Path: ${metric.path} | Latency: ${metric.latencyMs}ms | Speed Index: ${metric.speedIndex}`)
     }
+    // Background probe via Redux thunk
+    dispatch(probeEndpointAsync(metric.path))
   }
 
   return (
@@ -57,11 +107,11 @@ export default function NetworkInspectView({
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className="text-2xl font-extrabold text-slate-900 dark:text-white">
-              {networkInspectSummary.averageLatency}
+              {summary.averageLatency}
             </span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">DNS: {networkInspectSummary.dnsLookup} • SSL: {networkInspectSummary.sslHandshake}</p>
+          <p className="text-[10px] text-slate-400 mt-1">DNS: {summary.dnsLookup} • SSL: {summary.sslHandshake}</p>
         </div>
 
         {/* TTFB */}
@@ -72,7 +122,7 @@ export default function NetworkInspectView({
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className="text-2xl font-extrabold text-slate-900 dark:text-white">
-              {networkInspectSummary.ttfb}
+              {summary.ttfb}
             </span>
             <span className="text-xs font-semibold text-emerald-500">Fast</span>
           </div>
@@ -87,11 +137,11 @@ export default function NetworkInspectView({
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className="text-2xl font-extrabold text-slate-900 dark:text-white">
-              {networkInspectSummary.totalTransferSize}
+              {summary.totalTransferSize}
             </span>
-            <span className="text-xs text-slate-400 font-mono">({networkInspectSummary.totalRequests} reqs)</span>
+            <span className="text-xs text-slate-400 font-mono">({summary.totalRequests} reqs)</span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">Uncompressed: {networkInspectSummary.uncompressedSize}</p>
+          <p className="text-[10px] text-slate-400 mt-1">Uncompressed: {summary.uncompressedSize}</p>
         </div>
 
         {/* Protocol & SSL */}
@@ -102,7 +152,7 @@ export default function NetworkInspectView({
           </div>
           <div className="mt-2">
             <span className="text-sm font-bold text-slate-900 dark:text-white font-mono">
-              {networkInspectSummary.httpProtocol}
+              {summary.httpProtocol}
             </span>
           </div>
           <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium">HTTP/2 Multiplexing Active</p>

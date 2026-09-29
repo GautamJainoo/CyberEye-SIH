@@ -6,7 +6,13 @@ import {
 import { Vulnerability, Status } from '../types'
 import { severityClass, statusClass } from '../utils'
 import { useToast } from './Toast'
-import { triageFinding, verifyFinding, rejectFinding } from '../services/api'
+import { useAppDispatch } from '../store'
+import {
+  updateStatusOptimistic,
+  triageFindingAsync,
+  verifyFindingAsync,
+  rejectFindingAsync,
+} from '../store/slices/findingsSlice'
 
 interface Props {
   vuln: Vulnerability | null
@@ -15,6 +21,7 @@ interface Props {
 }
 
 export default function VulnModal({ vuln, onClose, onStatusChange }: Props) {
+  const dispatch = useAppDispatch()
   const overlayRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
@@ -72,37 +79,54 @@ export default function VulnModal({ vuln, onClose, onStatusChange }: Props) {
     }
   }
 
-  const handleStatusToggle = async (newStatus: Status) => {
+  const handleStatusToggle = (newStatus: Status) => {
     setCurrentStatus(newStatus)
+    // 0ms Optimistic UI update in Redux
+    dispatch(updateStatusOptimistic({ id: vuln.id, status: newStatus }))
     onStatusChange?.(vuln.id, newStatus)
 
     if (vuln.backendId) {
       if (newStatus === 'In Progress') {
-        const ok = await triageFinding(vuln.backendId, 'Analyst marked in progress via dashboard')
-        if (ok) {
-          toast('info', 'Recorded to WMSA DB', 'Finding transitioned to TRIAGED in SQLite audit log')
-          return
-        }
+        dispatch(
+          triageFindingAsync({
+            id: vuln.id,
+            backendId: vuln.backendId,
+            reason: 'Analyst marked in progress via dashboard',
+          })
+        )
+        toast('info', 'Recorded to WMSA DB', 'Finding transitioned to TRIAGED in SQLite audit log')
+        return
       } else if (newStatus === 'Fixed') {
-        const ok = await verifyFinding(vuln.backendId, 'Analyst verified remediation via dashboard')
-        if (ok) {
-          toast('success', 'Verified in WMSA DB', 'Finding transitioned to VERIFIED in SQLite audit log')
-          return
-        }
+        dispatch(
+          verifyFindingAsync({
+            id: vuln.id,
+            backendId: vuln.backendId,
+            reason: 'Analyst verified remediation via dashboard',
+          })
+        )
+        toast('success', 'Verified in WMSA DB', 'Finding transitioned to VERIFIED in SQLite audit log')
+        return
       }
     }
     toast('info', 'Status Updated', `Vulnerability marked as "${newStatus}"`)
   }
 
-  const handleReject = async () => {
+  const handleReject = () => {
     setCurrentStatus('Fixed')
+    // 0ms Optimistic UI update in Redux
+    dispatch(updateStatusOptimistic({ id: vuln.id, status: 'Fixed' }))
     onStatusChange?.(vuln.id, 'Fixed')
+
     if (vuln.backendId) {
-      const ok = await rejectFinding(vuln.backendId, 'Rejected by analyst as false positive')
-      if (ok) {
-        toast('info', 'Finding Rejected in WMSA DB', 'Transitioned to REJECTED in SQLite audit log')
-        return
-      }
+      dispatch(
+        rejectFindingAsync({
+          id: vuln.id,
+          backendId: vuln.backendId,
+          reason: 'Rejected by analyst as false positive',
+        })
+      )
+      toast('info', 'Finding Rejected in WMSA DB', 'Transitioned to REJECTED in SQLite audit log')
+      return
     }
     toast('info', 'Status Updated', 'Vulnerability marked as rejected')
   }

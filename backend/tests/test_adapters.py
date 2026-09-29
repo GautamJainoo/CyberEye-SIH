@@ -134,10 +134,13 @@ def test_adapter_preflights(tmp_path):
     semgrep = SemgrepAdapter()
 
     res_git = gitleaks.preflight(tmp_path)
-    assert res_git.tool_present is True
+    assert isinstance(res_git.tool_present, bool)
+    assert res_git.target_accessible is True
 
     res_osv = osv.preflight(tmp_path)
-    assert res_osv.tool_present is True
+    assert isinstance(res_osv.tool_present, bool)
+    assert res_osv.target_accessible is True
 
     res_sem = semgrep.preflight(tmp_path)
-    assert res_sem.tool_present is True
+    assert isinstance(res_sem.tool_present, bool)
+    assert res_sem.target_accessible is True

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { countryThreats, zeroCountryThreats, CountryThreat } from '../data'
 import { useToast } from './Toast'
+import { useAppSelector } from '../store'
 
 type NodeStatus = 'secure' | 'warning' | 'vulnerable'
 
@@ -42,33 +43,36 @@ interface AttackSurfaceProps {
   isZeroData?: boolean
 }
 
-export default function AttackSurfaceMap({ isZeroData = false }: AttackSurfaceProps) {
+export default function AttackSurfaceMap({ isZeroData: propZero }: AttackSurfaceProps) {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'topology' | 'countries'>('topology')
   const [selectedNode, setSelectedNode] = useState<MapNode | null>(null)
   const [selectedCountry, setSelectedCountry] = useState<CountryThreat | null>(null)
+  const findingsZero = useAppSelector((state) => state.findings.isZeroData)
+  const liveNodes = useAppSelector((state) => state.telemetry.attackSurfaceNodes)
+  const isZeroData = propZero !== undefined ? propZero : findingsZero
 
   const activeCountries = isZeroData ? zeroCountryThreats : countryThreats
 
   const layer1: MapNode = {
     id: 'user',
     label: 'User Traffic',
-    status: 'secure',
+    status: (isZeroData ? 'secure' : liveNodes['user']?.status || 'secure') as NodeStatus,
     icon: User,
     ip: 'Edge Anycast',
     port: '443 / HTTPS',
-    findings: 0,
+    findings: isZeroData ? 0 : (liveNodes['user']?.findings ?? 0),
     description: 'Public clients routed via Cloudflare SSL termination & TLS 1.3 encryption.'
   }
 
   const layer2: MapNode = {
     id: 'frontend',
     label: 'Frontend CDN',
-    status: 'secure',
+    status: (isZeroData ? 'secure' : liveNodes['frontend']?.status || 'secure') as NodeStatus,
     icon: Server,
     ip: '104.21.58.12',
     port: '443 (Edge)',
-    findings: isZeroData ? 0 : 1,
+    findings: isZeroData ? 0 : (liveNodes['frontend']?.findings ?? 1),
     description: isZeroData
       ? 'Vite React SPA hosted on AWS CloudFront. Zero header or asset findings.'
       : 'Vite React SPA hosted on AWS CloudFront. Minor CSP header recommendation.'
@@ -77,11 +81,11 @@ export default function AttackSurfaceMap({ isZeroData = false }: AttackSurfacePr
   const layer3: MapNode = {
     id: 'gateway',
     label: 'API Gateway',
-    status: isZeroData ? 'secure' : 'warning',
+    status: (isZeroData ? 'secure' : liveNodes['gateway']?.status || 'warning') as NodeStatus,
     icon: ShieldCheck,
     ip: '10.0.1.15',
     port: '8080 (REST / GraphQL)',
-    findings: isZeroData ? 0 : 3,
+    findings: isZeroData ? 0 : (liveNodes['gateway']?.findings ?? 3),
     description: isZeroData
       ? 'Kong Ingress Gateway. Active rate limiting and strict CORS headers applied.'
       : 'Kong Ingress Gateway. Rate limiting missing on /api/login and /api/search.'
@@ -91,11 +95,11 @@ export default function AttackSurfaceMap({ isZeroData = false }: AttackSurfacePr
     {
       id: 'auth',
       label: 'Auth Service',
-      status: 'secure',
+      status: (isZeroData ? 'secure' : liveNodes['auth']?.status || 'secure') as NodeStatus,
       icon: ShieldCheck,
       ip: '10.0.2.10',
       port: '50051 (gRPC)',
-      findings: isZeroData ? 0 : 1,
+      findings: isZeroData ? 0 : (liveNodes['auth']?.findings ?? 1),
       description: isZeroData
         ? 'OAuth2 / OIDC token provider. HttpOnly secure cookies configured.'
         : 'OAuth2 / OIDC token provider. JWT storage configuration needs review.'
@@ -103,11 +107,11 @@ export default function AttackSurfaceMap({ isZeroData = false }: AttackSurfacePr
     {
       id: 'analytics',
       label: 'Analytics Svc',
-      status: isZeroData ? 'secure' : 'warning',
+      status: (isZeroData ? 'secure' : liveNodes['analytics']?.status || 'warning') as NodeStatus,
       icon: Server,
       ip: '10.0.2.14',
       port: '9090 (HTTP)',
-      findings: isZeroData ? 0 : 2,
+      findings: isZeroData ? 0 : (liveNodes['analytics']?.findings ?? 2),
       description: isZeroData
         ? 'Clickhouse telemetry pipeline. Metric export endpoint secured behind VPC.'
         : 'Clickhouse telemetry pipeline. Unprotected metrics export endpoint found.'
@@ -115,11 +119,11 @@ export default function AttackSurfaceMap({ isZeroData = false }: AttackSurfacePr
     {
       id: 'database',
       label: 'PostgreSQL DB',
-      status: isZeroData ? 'secure' : 'vulnerable',
+      status: (isZeroData ? 'secure' : liveNodes['database']?.status || 'vulnerable') as NodeStatus,
       icon: Server,
       ip: '10.0.3.5',
       port: '5432 (Postgres)',
-      findings: isZeroData ? 0 : 4,
+      findings: isZeroData ? 0 : (liveNodes['database']?.findings ?? 4),
       description: isZeroData
         ? 'PostgreSQL Cluster. Parameterized prepared queries enforced with 0 SQLi vectors.'
         : 'Critical SQLi vector reachable from public query builder without input sanitization.'

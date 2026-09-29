@@ -1,17 +1,40 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { vulnDistribution, zeroVulnDistribution } from '../data'
 import { useToast } from './Toast'
+import { useAppSelector } from '../store'
 
 interface Props {
   onSelectSeverity?: (sev: string) => void
   isZeroData?: boolean
 }
 
-export default function VulnDistribution({ onSelectSeverity, isZeroData = false }: Props) {
+export default function VulnDistribution({ onSelectSeverity, isZeroData: propZero }: Props) {
   const { toast } = useToast()
   const [activeItem, setActiveItem] = useState<string | null>(null)
+  const findingsState = useAppSelector((state) => state.findings)
+  const isZeroData = propZero !== undefined ? propZero : findingsState.isZeroData
+  const items = findingsState.items
 
-  const activeData = isZeroData ? zeroVulnDistribution : vulnDistribution
+  const activeData = useMemo(() => {
+    if (isZeroData) return zeroVulnDistribution
+    let crit = 0, high = 0, med = 0, low = 0
+    for (const f of items) {
+      const s = (f.severity || '').toUpperCase()
+      if (s === 'CRITICAL') crit++
+      else if (s === 'HIGH') high++
+      else if (s === 'MEDIUM') med++
+      else low++
+    }
+    const tot = crit + high + med + low
+    if (tot === 0) return vulnDistribution
+    return [
+      { label: 'Critical', count: crit, pct: Math.round((crit / tot) * 100), color: '#ef4444' },
+      { label: 'High', count: high, pct: Math.round((high / tot) * 100), color: '#f97316' },
+      { label: 'Medium', count: med, pct: Math.round((med / tot) * 100), color: '#f59e0b' },
+      { label: 'Low', count: low, pct: Math.round((low / tot) * 100), color: '#10b981' },
+    ]
+  }, [isZeroData, items])
+
   const total = activeData.reduce((s, d) => s + d.count, 0)
 
   const handleRowClick = (label: string, count: number) => {

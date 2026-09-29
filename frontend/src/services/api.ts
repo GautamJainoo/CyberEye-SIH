@@ -246,3 +246,297 @@ export async function resetDatabase(): Promise<{ status: string; purged_findings
   }
 }
 
+// --- DevTools Suite API Types & Functions ---
+
+export interface DevToolsNetworkRequest {
+  id: string
+  name: string
+  path?: string
+  status: number
+  type: string
+  initiator: string
+  size: string
+  time: number
+  waterfallPct: number
+  offsetPct: number
+  isVuln: boolean
+  vulnTag?: string
+  vulnDesc?: string
+  backendFindingId?: string
+  method?: string
+}
+
+export interface DevToolsSecurityHeader {
+  name: string
+  status: 'PASS' | 'WARN' | 'FAIL'
+  severity: string
+  value: string | null
+  recommendation: string
+  risk: string | null
+}
+
+export interface DevToolsSecurityAnalysis {
+  origin: string
+  protocol: string
+  connection_secure: boolean
+  certificate: {
+    subject: string
+    issuer: string
+    valid_from: string
+    valid_to: string
+    san: string[]
+    key_exchange: string
+    cipher: string
+    signature_algorithm: string
+  }
+  security_headers: DevToolsSecurityHeader[]
+  score: number
+  overall_status: string
+}
+
+export interface DevToolsPerformanceMetric {
+  value: number
+  unit: string
+  status: string
+  threshold: number
+  score: number
+}
+
+export interface DevToolsPerformance {
+  target: string
+  metrics: {
+    lcp: DevToolsPerformanceMetric
+    inp: DevToolsPerformanceMetric
+    cls: DevToolsPerformanceMetric
+    ttfb: DevToolsPerformanceMetric
+    fcp: DevToolsPerformanceMetric
+    speed_index: DevToolsPerformanceMetric
+  }
+  summary: {
+    overall_score: number
+    total_transfer_kb: number
+    uncompressed_kb: number
+    total_requests: number
+    dom_content_loaded_ms: number
+    load_time_ms: number
+  }
+}
+
+export interface DevToolsStorageItem {
+  key: string
+  value: string
+  isSensitive: boolean
+  cwe: string | null
+  risk: string
+  description: string
+  fix: string | null
+}
+
+export interface DevToolsCookieItem {
+  name: string
+  domain: string
+  path: string
+  httpOnly: boolean
+  secure: boolean
+  sameSite: string
+  status: string
+}
+
+export interface DevToolsStorage {
+  local_storage: DevToolsStorageItem[]
+  cookies: DevToolsCookieItem[]
+  service_workers: Array<{
+    scope: string
+    script: string
+    status: string
+    cache_storage_kb: number
+  }>
+}
+
+export interface NetworkInspectMetric {
+  id: string
+  name: string
+  path: string
+  type: 'API Endpoint' | 'HTML Page'
+  latencyMs: number
+  speedIndex: string
+  pageSize: string
+  httpStatus: number
+  securityStatus: 'Vulnerable' | 'Secure'
+  findingTag?: string
+  findingDesc?: string
+}
+
+export interface NetworkInspectResponse {
+  summary: {
+    averageLatency: string
+    ttfb: string
+    totalRequests: number
+    totalTransferSize: string
+    uncompressedSize: string
+    httpProtocol: string
+    dnsLookup: string
+    sslHandshake: string
+  }
+  metrics: NetworkInspectMetric[]
+}
+
+export interface CopilotChatResponse {
+  reply: string
+  codeSnippet?: string | null
+  model: string
+  timestamp: string
+}
+
+export interface CopilotRecommendation {
+  id: number
+  finding_id: string
+  priority: string
+  color: string
+  bg: string
+  border: string
+  dot: string
+  title: string
+  impact: string
+  fix: string
+  codeSnippet?: string | null
+}
+
+export interface TelemetryAttackSurfaceNode {
+  id: string
+  label: string
+  status: 'secure' | 'warning' | 'vulnerable'
+  findings: number
+}
+
+export async function fetchDevToolsNetwork(targetUrl?: string): Promise<DevToolsNetworkRequest[]> {
+  try {
+    const url = targetUrl ? `${API_BASE}/devtools/network?target_url=${encodeURIComponent(targetUrl)}` : `${API_BASE}/devtools/network`
+    const res = await fetch(url)
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.requests || []
+  } catch {
+    return []
+  }
+}
+
+export async function fetchDevToolsSecurity(targetUrl?: string): Promise<DevToolsSecurityAnalysis | null> {
+  try {
+    const url = targetUrl ? `${API_BASE}/devtools/security?target_url=${encodeURIComponent(targetUrl)}` : `${API_BASE}/devtools/security`
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function fetchDevToolsPerformance(targetUrl?: string): Promise<DevToolsPerformance | null> {
+  try {
+    const url = targetUrl ? `${API_BASE}/devtools/performance?target_url=${encodeURIComponent(targetUrl)}` : `${API_BASE}/devtools/performance`
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function fetchDevToolsStorage(): Promise<DevToolsStorage | null> {
+  try {
+    const res = await fetch(`${API_BASE}/devtools/storage`)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function executeDevToolsConsole(command: string): Promise<{ type: 'log' | 'warn' | 'error'; output: string } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/devtools/console/exec`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function fetchNetworkInspect(targetUrl?: string): Promise<NetworkInspectResponse | null> {
+  try {
+    const url = targetUrl ? `${API_BASE}/network/inspect?target_url=${encodeURIComponent(targetUrl)}` : `${API_BASE}/network/inspect`
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function probeNetworkEndpoint(urlOrPath: string): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/network/probe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url_or_path: urlOrPath }),
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function askCopilot(prompt: string, findingId?: string): Promise<CopilotChatResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/copilot/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, finding_id: findingId }),
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function fetchCopilotRecommendations(): Promise<CopilotRecommendation[]> {
+  try {
+    const res = await fetch(`${API_BASE}/copilot/recommendations`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.recommendations || []
+  } catch {
+    return []
+  }
+}
+
+export async function fetchAttackSurface(): Promise<TelemetryAttackSurfaceNode[]> {
+  try {
+    const res = await fetch(`${API_BASE}/telemetry/attack-surface`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.nodes || []
+  } catch {
+    return []
+  }
+}
+
+export async function fetchRadarData(): Promise<Array<{ label: string; value: number; maxValue: number }>> {
+  try {
+    const res = await fetch(`${API_BASE}/telemetry/radar`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.radar || []
+  } catch {
+    return []
+  }
+}
+
+

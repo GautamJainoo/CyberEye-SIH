@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Globe, Shield, HardDrive,
   CheckCircle2, AlertTriangle, AlertOctagon,
@@ -7,27 +7,45 @@ import {
   Trash2, ShieldAlert, Cpu
 } from 'lucide-react'
 import { useToast } from './Toast'
+import { useAppDispatch, useAppSelector } from '../store'
+import {
+  setDevToolsTab,
+  setThrottling,
+  setDisableCache,
+  setIsRecording,
+  setNetworkFilter,
+  setNetworkSearch,
+  addConsoleLogOptimistic,
+  clearConsoleLogs,
+  clearNetworkRequests,
+  executeConsoleAsync,
+  fetchDevToolsAllAsync,
+  DevToolTab,
+} from '../store/slices/devtoolsSlice'
 
 interface ChromeDevToolsSuiteProps {
   targetUrl?: string
   onInspectVuln?: (tag?: string) => void
 }
 
-type DevToolTab = 'network' | 'performance' | 'memory' | 'application' | 'security' | 'console'
-
 export default function ChromeDevToolsSuite({
   targetUrl = 'https://worldmonitor.app',
   onInspectVuln,
 }: ChromeDevToolsSuiteProps) {
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState<DevToolTab>('network')
+  const dispatch = useAppDispatch()
+  const devtoolsState = useAppSelector((state) => state.devtools)
 
-  // Network tab states
-  const [networkFilter, setNetworkFilter] = useState('All')
-  const [networkSearch, setNetworkSearch] = useState('')
-  const [throttling, setThrottling] = useState('No throttling')
-  const [disableCache, setDisableCache] = useState(false)
-  const [isRecording, setIsRecording] = useState(true)
+  const activeTab = devtoolsState.activeTab
+  const networkFilter = devtoolsState.networkFilter
+  const networkSearch = devtoolsState.networkSearch
+  const throttling = devtoolsState.throttling
+  const disableCache = devtoolsState.disableCache
+  const isRecording = devtoolsState.isRecording
+  const consoleLogs = devtoolsState.consoleLogs
+  const securityData = devtoolsState.security
+  const perfData = devtoolsState.performance
+  const storageData = devtoolsState.storage
 
   // Memory tab states
   const [memoryMode, setMemoryMode] = useState<'heap' | 'timeline' | 'sampling' | 'detached'>('heap')
@@ -41,13 +59,6 @@ export default function ChromeDevToolsSuite({
 
   // Console tab states
   const [consoleInput, setConsoleInput] = useState('')
-  const [consoleLogs, setConsoleLogs] = useState<Array<{ type: 'log' | 'warn' | 'error'; text: string; time: string }>>([
-    { type: 'log', text: '[WorldMonitor SEC-OPS] Initialized live telemetry observer v2.4', time: '12:52:01' },
-    { type: 'warn', text: '[Security Policy] Missing Content-Security-Policy header on /api/search response', time: '12:52:03' },
-    { type: 'error', text: '[Vulnerability Probe] Potential SQL injection detected on endpoint /api/search (CVE-2024-22252)', time: '12:52:04' },
-    { type: 'warn', text: '[Storage Auditor] Sensitive JWT auth_token detected in localStorage (CWE-922)', time: '12:52:05' },
-    { type: 'log', text: '[Performance] Local LCP candidate 0.78s rendered by <img.hero-banner>', time: '12:52:06' },
-  ])
 
   // Network Requests Dataset matching Amazon & World Monitor Inspect screenshots
   const networkRequests = [
@@ -164,8 +175,14 @@ export default function ChromeDevToolsSuite({
     },
   ]
 
+  const requests = devtoolsState.requests.length > 0 ? devtoolsState.requests : networkRequests
+
+  useEffect(() => {
+    dispatch(fetchDevToolsAllAsync(targetUrl))
+  }, [dispatch, targetUrl])
+
   // Filter requests
-  const filteredRequests = networkRequests.filter((r) => {
+  const filteredRequests = requests.filter((r) => {
     if (networkFilter !== 'All' && r.type !== networkFilter) return false
     if (networkSearch && !r.name.toLowerCase().includes(networkSearch.toLowerCase())) return false
     return true
@@ -184,12 +201,13 @@ export default function ChromeDevToolsSuite({
     e.preventDefault()
     if (!consoleInput.trim()) return
     const input = consoleInput.trim()
-    setConsoleLogs((prev) => [
-      ...prev,
-      { type: 'log', text: `> ${input}`, time: new Date().toLocaleTimeString() },
-      { type: 'log', text: `< 'Evaluated successfully in isolated sandbox'`, time: new Date().toLocaleTimeString() },
-    ])
+    const now = new Date().toLocaleTimeString()
+    // 0ms Optimistic UI update in Redux store
+    dispatch(addConsoleLogOptimistic({ type: 'log', text: `> ${input}`, time: now }))
     setConsoleInput('')
+
+    // Asynchronous background execution in isolated sandbox
+    dispatch(executeConsoleAsync(input))
   }
 
   return (
@@ -207,7 +225,7 @@ export default function ChromeDevToolsSuite({
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as DevToolTab)}
+              onClick={() => dispatch(setDevToolsTab(tab.id as DevToolTab))}
               className={`px-3.5 py-2 font-medium border-b-2 transition-colors cursor-pointer whitespace-nowrap text-xs ${
                 activeTab === tab.id
                   ? 'border-sky-500 text-sky-600 dark:text-sky-400 bg-white dark:bg-[#0e1626] font-bold'
@@ -238,7 +256,7 @@ export default function ChromeDevToolsSuite({
           <div className="p-2 bg-slate-100 dark:bg-[#0b1322] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2 text-xs">
             <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => setIsRecording(!isRecording)}
+                onClick={() => dispatch(setIsRecording(!isRecording))}
                 className={`p-1 rounded cursor-pointer ${
                   isRecording ? 'text-rose-500' : 'text-slate-400'
                 }`}
@@ -247,7 +265,10 @@ export default function ChromeDevToolsSuite({
                 <Circle size={13} className={isRecording ? 'fill-current' : ''} />
               </button>
               <button
-                onClick={() => toast('info', 'Network Log Cleared', 'All network requests flushed.')}
+                onClick={() => {
+                  dispatch(clearNetworkRequests())
+                  toast('info', 'Network Log Cleared', 'All network requests flushed.')
+                }}
                 className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                 title="Clear network log"
               >
@@ -261,7 +282,7 @@ export default function ChromeDevToolsSuite({
                 type="text"
                 placeholder="Filter (e.g. api, js, css)"
                 value={networkSearch}
-                onChange={(e) => setNetworkSearch(e.target.value)}
+                onChange={(e) => dispatch(setNetworkSearch(e.target.value))}
                 className="px-2 py-0.5 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 w-36 sm:w-48"
               />
 
@@ -270,7 +291,7 @@ export default function ChromeDevToolsSuite({
                 <input
                   type="checkbox"
                   checked={disableCache}
-                  onChange={(e) => setDisableCache(e.target.checked)}
+                  onChange={(e) => dispatch(setDisableCache(e.target.checked))}
                   className="rounded text-sky-500"
                 />
                 <span>Disable cache</span>
@@ -280,7 +301,7 @@ export default function ChromeDevToolsSuite({
               <select
                 value={throttling}
                 onChange={(e) => {
-                  setThrottling(e.target.value)
+                  dispatch(setThrottling(e.target.value))
                   toast('info', 'Network Throttling', `Simulating profile: ${e.target.value}`)
                 }}
                 className="px-2 py-0.5 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
@@ -297,7 +318,7 @@ export default function ChromeDevToolsSuite({
               {['All', 'Fetch/XHR', 'Doc', 'CSS', 'JS', 'Img', 'WS'].map((f) => (
                 <button
                   key={f}
-                  onClick={() => setNetworkFilter(f)}
+                  onClick={() => dispatch(setNetworkFilter(f))}
                   className={`px-2 py-0.5 rounded transition-colors cursor-pointer ${
                     networkFilter === f
                       ? 'bg-sky-500 text-white font-semibold'
@@ -388,10 +409,10 @@ export default function ChromeDevToolsSuite({
             {/* Bottom Status Bar matching Image 1 */}
             <div className="px-4 py-2 bg-slate-100 dark:bg-[#0a0f1d] border-t border-slate-200 dark:border-slate-800 text-[11px] font-mono text-slate-500 dark:text-slate-400 flex items-center justify-between flex-wrap gap-2">
             <div>
-              <span>122 requests</span> • <span>4.5 MB transferred</span> • <span>11.4 MB resources</span>
+              <span>{requests.length} requests</span> • <span>{perfData?.summary?.total_transfer_kb ? `${(perfData.summary.total_transfer_kb / 1024).toFixed(1)} MB` : '4.5 MB'} transferred</span> • <span>{perfData?.summary?.uncompressed_kb ? `${(perfData.summary.uncompressed_kb / 1024).toFixed(1)} MB` : '11.4 MB'} resources</span>
             </div>
             <div>
-              <span>Finish: 2.19 s</span> • <span className="text-sky-600 dark:text-sky-400">DOMContentLoaded: 1.19 s</span> • <span className="text-rose-500">Load: 1.71 s</span>
+              <span>Finish: {perfData?.summary?.load_time_ms ? `${(perfData.summary.load_time_ms / 1000).toFixed(2)} s` : '2.19 s'}</span> • <span className="text-sky-600 dark:text-sky-400">DOMContentLoaded: {perfData?.summary?.dom_content_loaded_ms ? `${(perfData.summary.dom_content_loaded_ms / 1000).toFixed(2)} s` : '1.19 s'}</span> • <span className="text-rose-500">Load: {perfData?.summary?.load_time_ms ? `${(perfData.summary.load_time_ms / 1000).toFixed(2)} s` : '1.71 s'}</span>
             </div>
           </div>
         </div>
@@ -411,7 +432,11 @@ export default function ChromeDevToolsSuite({
                 <span>Record</span>
               </button>
               <button
-                onClick={() => toast('info', 'Reload & Record', 'Capturing full page load performance...')}
+                onClick={async () => {
+                  toast('info', 'Reload & Record', `Measuring performance metrics for ${targetUrl}...`)
+                  await dispatch(fetchDevToolsAllAsync(targetUrl))
+                  toast('success', 'Performance Evaluated', `LCP: ${perfData?.metrics?.lcp?.value || 0.78}s | INP: ${perfData?.metrics?.inp?.value || 45}ms`)
+                }}
                 className="btn-secondary text-xs flex items-center gap-1.5"
               >
                 <RefreshCw size={12} />
@@ -447,11 +472,11 @@ export default function ChromeDevToolsSuite({
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                    0.78 s
+                    {perfData?.metrics?.lcp?.value ? `${perfData.metrics.lcp.value} s` : '0.78 s'}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                  Your local LCP value of <strong className="text-emerald-500">0.78 s</strong> is good.
+                  Your local LCP value of <strong className="text-emerald-500">{perfData?.metrics?.lcp?.value ? `${perfData.metrics.lcp.value} s` : '0.78 s'}</strong> is good.
                 </p>
                 <p className="text-[10px] font-mono text-sky-600 dark:text-sky-400 mt-2 bg-sky-50 dark:bg-sky-950/40 p-1.5 rounded border border-sky-200 dark:border-sky-900/50 truncate">
                   LCP element: img.a-worldmonitor-hero-image
@@ -468,11 +493,11 @@ export default function ChromeDevToolsSuite({
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                    0
+                    {perfData?.metrics?.cls?.value !== undefined ? `${perfData.metrics.cls.value}` : '0'}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                  Your local CLS value of <strong className="text-emerald-500">0</strong> is good.
+                  Your local CLS value of <strong className="text-emerald-500">{perfData?.metrics?.cls?.value !== undefined ? `${perfData.metrics.cls.value}` : '0'}</strong> is good.
                 </p>
                 <p className="text-[10px] font-mono text-slate-400 mt-2 p-1.5 rounded bg-slate-100 dark:bg-slate-800">
                   Zero unexpected shift clusters
@@ -489,7 +514,7 @@ export default function ChromeDevToolsSuite({
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                    45 ms
+                    {perfData?.metrics?.inp?.value !== undefined ? `${perfData.metrics.inp.value} ms` : '45 ms'}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
@@ -740,44 +765,46 @@ export default function ChromeDevToolsSuite({
                   <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
                     Cookies for {targetUrl}
                   </h4>
-                  <span className="text-[11px] text-slate-400 font-mono">4 items</span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {storageData?.cookies?.length ?? 4} items
+                  </span>
                 </div>
                 <table className="w-full text-left text-xs font-mono border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] text-slate-400 uppercase">
                       <th className="py-1.5 px-2">Name</th>
-                      <th className="py-1.5 px-2">Value</th>
                       <th className="py-1.5 px-2">Domain</th>
-                      <th className="py-1.5 px-2">Expires</th>
                       <th className="py-1.5 px-2">HttpOnly</th>
                       <th className="py-1.5 px-2">Secure</th>
+                      <th className="py-1.5 px-2">SameSite</th>
+                      <th className="py-1.5 px-2">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px]">
-                    <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                      <td className="py-2 px-2 font-bold text-sky-600 dark:text-sky-400">wm_session</td>
-                      <td className="py-2 px-2 text-slate-500 truncate max-w-[120px]">s%3A7a9f82...</td>
-                      <td className="py-2 px-2 text-slate-400">.worldmonitor.app</td>
-                      <td className="py-2 px-2 text-slate-400">2026-12-31</td>
-                      <td className="py-2 px-2 text-emerald-500 font-bold">✓</td>
-                      <td className="py-2 px-2 text-emerald-500 font-bold">✓</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 bg-rose-500/5">
-                      <td className="py-2 px-2 font-bold text-rose-500">csrf_token</td>
-                      <td className="py-2 px-2 text-slate-500 truncate max-w-[120px]">e10adc3949...</td>
-                      <td className="py-2 px-2 text-slate-400">.worldmonitor.app</td>
-                      <td className="py-2 px-2 text-slate-400">Session</td>
-                      <td className="py-2 px-2 text-rose-500 font-bold">✗ (CWE-352)</td>
-                      <td className="py-2 px-2 text-emerald-500 font-bold">✓</td>
-                    </tr>
-                    <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                      <td className="py-2 px-2 font-bold text-slate-700 dark:text-slate-300">wm_theme</td>
-                      <td className="py-2 px-2 text-slate-500">dark</td>
-                      <td className="py-2 px-2 text-slate-400">worldmonitor.app</td>
-                      <td className="py-2 px-2 text-slate-400">2027-01-01</td>
-                      <td className="py-2 px-2 text-slate-400">-</td>
-                      <td className="py-2 px-2 text-slate-400">-</td>
-                    </tr>
+                    {(storageData?.cookies && storageData.cookies.length > 0 ? storageData.cookies : [
+                      { name: 'wm_session', domain: '.worldmonitor.app', httpOnly: true, secure: true, sameSite: 'Lax', status: 'VALID' },
+                      { name: 'csrf_token', domain: '.worldmonitor.app', httpOnly: false, secure: true, sameSite: 'None', status: 'VULNERABLE (CWE-352)' },
+                      { name: 'wm_theme', domain: 'worldmonitor.app', httpOnly: false, secure: false, sameSite: 'Lax', status: 'PASS' },
+                    ]).map((c, idx) => (
+                      <tr key={idx} className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 ${!c.httpOnly && c.name.includes('csrf') ? 'bg-rose-500/5' : ''}`}>
+                        <td className="py-2 px-2 font-bold text-sky-600 dark:text-sky-400">{c.name}</td>
+                        <td className="py-2 px-2 text-slate-400">{c.domain}</td>
+                        <td className={`py-2 px-2 font-bold ${c.httpOnly ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {c.httpOnly ? '✓' : '✗'}
+                        </td>
+                        <td className={`py-2 px-2 font-bold ${c.secure ? 'text-emerald-500' : 'text-amber-500'}`}>
+                          {c.secure ? '✓' : '✗'}
+                        </td>
+                        <td className="py-2 px-2 text-slate-500">{c.sameSite}</td>
+                        <td className="py-2 px-2">
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                            c.status.includes('VULNERABLE') ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' : 'text-slate-400'
+                          }`}>
+                            {c.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -787,7 +814,7 @@ export default function ChromeDevToolsSuite({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    LocalStorage: https://worldmonitor.app
+                    LocalStorage: {targetUrl}
                   </h4>
                   <span className="text-[11px] font-bold text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
                     ⚠️ Vulnerability Flagged
@@ -808,19 +835,26 @@ export default function ChromeDevToolsSuite({
                     <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] text-slate-400 uppercase">
                       <th className="py-1.5 px-2">Key</th>
                       <th className="py-1.5 px-2">Value</th>
+                      <th className="py-1.5 px-2">Risk</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px]">
-                    <tr className="bg-rose-500/10">
-                      <td className="py-2 px-2 font-bold text-rose-500">auth_jwt</td>
-                      <td className="py-2 px-2 text-rose-600 dark:text-rose-400 break-all select-all">
-                        eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDQ0Iiwicm9sZSI6InVzZXIiLCJleHAiOjE3OTIwMDAwMDB9...
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-2 font-bold text-slate-700 dark:text-slate-300">wm-theme</td>
-                      <td className="py-2 px-2 text-slate-500">dark</td>
-                    </tr>
+                    {(storageData?.local_storage && storageData.local_storage.length > 0 ? storageData.local_storage : [
+                      { key: 'auth_jwt', value: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', isSensitive: true, risk: 'CWE-922' },
+                      { key: 'wm-theme', value: 'dark', isSensitive: false, risk: 'None' },
+                    ]).map((item, idx) => (
+                      <tr key={idx} className={item.isSensitive ? 'bg-rose-500/10' : ''}>
+                        <td className={`py-2 px-2 font-bold ${item.isSensitive ? 'text-rose-500' : 'text-slate-700 dark:text-slate-300'}`}>
+                          {item.key}
+                        </td>
+                        <td className="py-2 px-2 text-slate-500 dark:text-slate-400 break-all select-all">
+                          {item.value}
+                        </td>
+                        <td className="py-2 px-2 font-bold text-rose-500 text-[10px]">
+                          {item.risk}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -831,18 +865,22 @@ export default function ChromeDevToolsSuite({
                 <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   Active Service Workers
                 </h4>
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 font-mono text-xs">
-                  <div className="flex items-center gap-2 text-emerald-500 font-bold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>#4921 Activated and running</span>
+                {(storageData?.service_workers && storageData.service_workers.length > 0 ? storageData.service_workers : [
+                  { scope: 'https://worldmonitor.app/', script: 'https://worldmonitor.app/sw.js', status: 'Activated and running', cache_storage_kb: 492 }
+                ]).map((sw, idx) => (
+                  <div key={idx} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 font-mono text-xs">
+                    <div className="flex items-center gap-2 text-emerald-500 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>{sw.status}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Script: {sw.script}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Scope: {sw.scope} • Cache: {sw.cache_storage_kb} KB
+                    </p>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Origin: https://worldmonitor.app/sw.js
-                  </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    Clients: 1 open tab • Push / Sync messaging supported
-                  </p>
-                </div>
+                ))}
               </div>
             )}
           </div>
@@ -867,7 +905,7 @@ export default function ChromeDevToolsSuite({
                 </p>
                 <div className="px-2 py-1 text-slate-700 dark:text-slate-300 flex items-center gap-1.5 truncate">
                   <Lock size={12} className="text-emerald-500 shrink-0" />
-                  <span className="truncate">https://worldmonitor.app</span>
+                  <span className="truncate">{securityData?.origin || targetUrl}</span>
                 </div>
               </div>
               <div className="pt-2">
@@ -893,8 +931,12 @@ export default function ChromeDevToolsSuite({
             {/* Status Banner */}
             <div className="pb-3 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-emerald-500" />
-                <span>This page is secure (valid HTTPS).</span>
+                <CheckCircle2 size={16} className={securityData?.connection_secure !== false ? "text-emerald-500" : "text-amber-500"} />
+                <span>
+                  {securityData?.connection_secure !== false
+                    ? 'This page is secure (valid HTTPS).'
+                    : 'Target connection security alerts flagged.'}
+                </span>
               </h3>
             </div>
 
@@ -908,7 +950,7 @@ export default function ChromeDevToolsSuite({
                   Certificate - <span className="text-emerald-500 font-semibold">valid and trusted</span>
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                  The connection to this site is using a valid, trusted server certificate issued by Amazon RSA 2048 M01 / DigiCert.
+                  The connection to this site is using a valid, trusted server certificate issued by {securityData?.certificate?.issuer || 'Amazon RSA 2048 M01 / DigiCert'}.
                 </p>
                 <button
                   onClick={() => setCertModalOpen(true)}
@@ -930,25 +972,49 @@ export default function ChromeDevToolsSuite({
                   Connection - <span className="text-emerald-500 font-semibold">secure connection settings</span>
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                  The connection to this site is encrypted and authenticated using TLS 1.3, QUIC, X25519MLKEM768, and AES_128_GCM.
+                  The connection to this site is encrypted and authenticated using {securityData?.protocol || 'TLS 1.3, QUIC, AES_128_GCM'}.
                 </p>
               </div>
             </div>
 
-            {/* Resources Section */}
-            <div className="flex items-start gap-3">
-              <div className="p-1.5 rounded-lg bg-teal-500/15 text-teal-500 mt-0.5">
-                <Globe size={16} />
+            {/* Security Headers Audit (SIH PS 26163 Core Feature) */}
+            {securityData?.security_headers && securityData.security_headers.length > 0 && (
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <ShieldAlert size={14} className="text-indigo-500" />
+                    <span>Security Headers Audit Matrix</span>
+                  </h4>
+                  <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
+                    securityData.overall_status === 'SECURE'
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400'
+                  }`}>
+                    Score: {securityData.score}/100 ({securityData.overall_status})
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {securityData.security_headers.map((h, i) => (
+                    <div key={i} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-start justify-between gap-2 text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            h.status === 'PASS' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' :
+                            h.status === 'WARN' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' :
+                            'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
+                          }`}>{h.status}</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-[11px]">{h.name}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{h.recommendation}</p>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 truncate max-w-[140px] shrink-0">
+                        {h.value || 'None'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  Resources - <span className="text-emerald-500 font-semibold">all served securely</span>
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  All 122 resources on this page are served securely over HTTPS. Zero mixed content violations.
-                </p>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -956,6 +1022,15 @@ export default function ChromeDevToolsSuite({
       {/* ─── TAB 6: CONSOLE ─── */}
       {activeTab === 'console' && (
         <div className="flex flex-col h-[380px] bg-slate-950 font-mono text-xs">
+          <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+            <span>DevTools Console (JavaScript / Security Sandbox)</span>
+            <button
+              onClick={() => dispatch(clearConsoleLogs())}
+              className="text-[10px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+            >
+              Clear Console
+            </button>
+          </div>
           <div className="flex-1 p-3 overflow-y-auto space-y-1.5 text-slate-300">
             {consoleLogs.map((log, idx) => (
               <div
@@ -995,7 +1070,7 @@ export default function ChromeDevToolsSuite({
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Lock size={15} className="text-emerald-500" />
-                <span>Certificate Viewer: worldmonitor.app</span>
+                <span>Certificate Viewer: {targetUrl}</span>
               </h3>
               <button onClick={() => setCertModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 ✕
@@ -1004,24 +1079,32 @@ export default function ChromeDevToolsSuite({
             <div className="py-3 space-y-2 text-xs font-mono">
               <div>
                 <span className="text-slate-400">Common Name (CN):</span>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">*.worldmonitor.app</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">
+                  {securityData?.certificate?.subject || '*.worldmonitor.app'}
+                </p>
               </div>
               <div>
                 <span className="text-slate-400">Issuer:</span>
-                <p className="font-semibold text-slate-800 dark:text-slate-200">Amazon RSA 2048 M01</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">
+                  {securityData?.certificate?.issuer || 'Amazon RSA 2048 M01'}
+                </p>
               </div>
               <div>
                 <span className="text-slate-400">Validity:</span>
-                <p className="text-slate-700 dark:text-slate-300">Issued Oct 1, 2025 • Expires Nov 28, 2026</p>
+                <p className="text-slate-700 dark:text-slate-300">
+                  Issued {securityData?.certificate?.valid_from || 'Oct 1, 2025'} • Expires {securityData?.certificate?.valid_to || 'Nov 28, 2026'}
+                </p>
               </div>
               <div>
-                <span className="text-slate-400">Public Key:</span>
-                <p className="text-slate-700 dark:text-slate-300">RSA 2048 bits (SHA-256 with RSA Encryption)</p>
+                <span className="text-slate-400">Cipher &amp; Key Exchange:</span>
+                <p className="text-slate-700 dark:text-slate-300">
+                  {securityData?.certificate?.cipher || 'AES_128_GCM'} ({securityData?.certificate?.signature_algorithm || 'SHA-256 with RSA'})
+                </p>
               </div>
               <div>
-                <span className="text-slate-400">Fingerprint (SHA-256):</span>
+                <span className="text-slate-400">Subject Alternative Names (SAN):</span>
                 <p className="text-[10px] text-slate-500 break-all">
-                  E8:5B:34:F1:0C:44:98:71:3F:8A:9D:61:C2:59:7E:11:90:3A:42:0E
+                  {securityData?.certificate?.san?.join(', ') || 'worldmonitor.app, *.worldmonitor.app, api.worldmonitor.app'}
                 </p>
               </div>
             </div>

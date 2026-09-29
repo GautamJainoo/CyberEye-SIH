@@ -1,11 +1,17 @@
-import { useState, useMemo, useEffect } from 'react'
-import { vulnerabilities as sampleVulns } from '../data'
+import { useState, useMemo } from 'react'
 import { Vulnerability, Severity, Status } from '../types'
 import { severityClass, statusClass } from '../utils'
 import { ArrowUpRight, ChevronRight, Filter, Download, ArrowUpDown, Search, ShieldCheck, RefreshCw } from 'lucide-react'
 import VulnModal from './VulnModal'
 import { useToast } from './Toast'
-import { fetchFindings, mapBackendFinding } from '../services/api'
+import { useAppDispatch, useAppSelector } from '../store'
+import {
+  fetchFindingsAsync,
+  updateStatusOptimistic,
+  setSeverityFilter,
+  setStatusFilter,
+  setSearchQuery,
+} from '../store/slices/findingsSlice'
 
 interface Props {
   searchQuery?: string
@@ -16,53 +22,47 @@ interface Props {
 }
 
 export default function FindingsTable({
-  searchQuery = '',
-  selectedSeverity: initialFilter = 'All',
-  isZeroData = false,
+  searchQuery: propSearchQuery,
+  selectedSeverity: propSelectedSeverity,
+  isZeroData: propIsZeroData,
   onLoadSample,
   onTriggerScan,
 }: Props) {
   const { toast } = useToast()
-  const [vulns, setVulns] = useState<Vulnerability[]>(sampleVulns)
-  const [isLiveBackend, setIsLiveBackend] = useState<boolean>(false)
-  const [loading, setLoading] = useState<boolean>(false)
+  const dispatch = useAppDispatch()
+
+  const storeFindings = useAppSelector((state) => state.findings)
+  const vulns = storeFindings.items
+  const isLiveBackend = storeFindings.isLiveBackend
+  const loading = storeFindings.isLoading
+  const isZeroData = propIsZeroData !== undefined ? propIsZeroData : storeFindings.isZeroData
+  const severityFilter = propSelectedSeverity !== undefined ? propSelectedSeverity : storeFindings.severityFilter
+  const statusFilter = storeFindings.statusFilter
+  const activeSearch = propSearchQuery !== undefined ? propSearchQuery : storeFindings.searchQuery
+
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null)
-  const [severityFilter, setSeverityFilter] = useState<Severity | 'All'>(initialFilter)
-  const [statusFilter, setStatusFilter] = useState<Status | 'All'>('All')
   const [localSearch, setLocalSearch] = useState('')
   const [sortAsc, setSortAsc] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
-  const reloadFindings = async () => {
-    setLoading(true)
-    const data = await fetchFindings()
-    if (data && data.findings && data.findings.length > 0) {
-      const mapped = data.findings.map((f, i) => mapBackendFinding(f, i))
-      setVulns(mapped)
-      setIsLiveBackend(true)
-    } else {
-      setIsLiveBackend(false)
-    }
-    setLoading(false)
+  const reloadFindings = () => {
+    dispatch(fetchFindingsAsync())
   }
-
-  useEffect(() => {
-    reloadFindings()
-  }, [])
 
   // When isZeroData is true, active findings list is empty []
   const activeVulnList = isZeroData ? [] : vulns
 
   const handleStatusChange = (id: number | string, newStatus: Status) => {
-    setVulns(prev => prev.map(v => v.id === id ? { ...v, status: newStatus } : v))
+    // 0ms Optimistic UI update in Redux
+    dispatch(updateStatusOptimistic({ id, status: newStatus }))
   }
 
   const filteredVulns = useMemo(() => {
     return activeVulnList
-      .filter(v => {
+      .filter((v) => {
         if (severityFilter !== 'All' && v.severity !== severityFilter) return false
         if (statusFilter !== 'All' && v.status !== statusFilter) return false
-        const q = (searchQuery || localSearch).toLowerCase().trim()
+        const q = (activeSearch || localSearch).toLowerCase().trim()
         if (!q) return true
         return (
           v.name.toLowerCase().includes(q) ||
@@ -71,8 +71,8 @@ export default function FindingsTable({
           (v.cve && v.cve.toLowerCase().includes(q))
         )
       })
-      .sort((a, b) => sortAsc ? a.cvss - b.cvss : b.cvss - a.cvss)
-  }, [activeVulnList, severityFilter, statusFilter, searchQuery, localSearch, sortAsc])
+      .sort((a, b) => (sortAsc ? a.cvss - b.cvss : b.cvss - a.cvss))
+  }, [activeVulnList, severityFilter, statusFilter, activeSearch, localSearch, sortAsc])
 
   const displayedVulns = showAll ? filteredVulns : filteredVulns.slice(0, 6)
 
@@ -131,7 +131,10 @@ export default function FindingsTable({
             <input
               type="text"
               value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
+              onChange={(e) => {
+                setLocalSearch(e.target.value)
+                dispatch(setSearchQuery(e.target.value))
+              }}
               placeholder="Filter findings..."
               className="pl-7 pr-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-300 w-36"
             />
@@ -178,7 +181,7 @@ export default function FindingsTable({
           {(['All', 'Critical', 'High', 'Medium', 'Low'] as (Severity | 'All')[]).map((sev) => (
             <button
               key={sev}
-              onClick={() => setSeverityFilter(sev)}
+              onClick={() => dispatch(setSeverityFilter(sev))}
               className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
                 severityFilter === sev
                   ? 'bg-indigo-600 text-white shadow-sm'
@@ -197,7 +200,7 @@ export default function FindingsTable({
           {(['All', 'Open', 'In Progress', 'Fixed'] as (Status | 'All')[]).map((st) => (
             <button
               key={st}
-              onClick={() => setStatusFilter(st)}
+              onClick={() => dispatch(setStatusFilter(st))}
               className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
                 statusFilter === st
                   ? 'bg-slate-800 dark:bg-slate-700 text-white'
@@ -299,7 +302,7 @@ export default function FindingsTable({
 
       {/* Row details modal */}
       <VulnModal
-        vuln={selectedVuln}
+        vuln={selectedVuln ? vulns.find((v) => v.id === selectedVuln.id) || selectedVuln : null}
         onClose={() => setSelectedVuln(null)}
         onStatusChange={handleStatusChange}
       />

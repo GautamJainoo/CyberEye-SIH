@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { radarData, zeroRadarData } from '../data'
 import { RadarDataPoint } from '../types'
 import { useToast } from './Toast'
+import { useAppSelector } from '../store'
 
 const SIZE = 200
 const CENTER = SIZE / 2
@@ -40,11 +41,14 @@ interface Props {
   isZeroData?: boolean
 }
 
-export default function SecurityRadar({ isZeroData = false }: Props) {
+export default function SecurityRadar({ isZeroData: propZero }: Props) {
   const { toast } = useToast()
   const [selectedPoint, setSelectedPoint] = useState<RadarDataPoint | null>(null)
+  const findingsZero = useAppSelector((state) => state.findings.isZeroData)
+  const storeRadar = useAppSelector((state) => state.telemetry.radar)
+  const isZeroData = propZero !== undefined ? propZero : findingsZero
 
-  const activeRadar = isZeroData ? zeroRadarData : radarData
+  const activeRadar = isZeroData ? zeroRadarData : (storeRadar || radarData)
   const n = activeRadar.length
   const gridLevels = [0.25, 0.5, 0.75, 1]
 

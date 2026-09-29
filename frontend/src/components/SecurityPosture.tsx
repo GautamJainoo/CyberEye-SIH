@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useToast } from './Toast'
+import { useAppSelector } from '../store'
 
 const RADIUS = 54
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
@@ -30,11 +31,33 @@ interface Props {
   isZeroData?: boolean
 }
 
-export default function SecurityPosture({ onFilterSeverity, isZeroData = false }: Props) {
+export default function SecurityPosture({ onFilterSeverity, isZeroData: propZero }: Props) {
   const { toast } = useToast()
   const [hoveredSegment, setHoveredSegment] = useState<Segment | null>(null)
+  const findingsState = useAppSelector((state) => state.findings)
+  const isZeroData = propZero !== undefined ? propZero : findingsState.isZeroData
+  const items = findingsState.items
 
-  const segments = isZeroData ? zeroSegments : defaultSegments
+  const segments = useMemo(() => {
+    if (isZeroData) return zeroSegments
+    let crit = 0, high = 0, med = 0, low = 0
+    for (const f of items) {
+      const s = (f.severity || '').toUpperCase()
+      if (s === 'CRITICAL') crit++
+      else if (s === 'HIGH') high++
+      else if (s === 'MEDIUM') med++
+      else low++
+    }
+    const total = crit + high + med + low
+    if (total === 0) return defaultSegments
+    return [
+      { label: 'Critical', pct: crit / total, color: '#ef4444', count: crit },
+      { label: 'High',     pct: high / total, color: '#f97316', count: high },
+      { label: 'Medium',   pct: med / total, color: '#f59e0b', count: med },
+      { label: 'Low',      pct: low / total, color: '#10b981', count: low },
+    ]
+  }, [isZeroData, items])
+
   let offset = CIRCUMFERENCE * 0.25
   const gap = 3
 

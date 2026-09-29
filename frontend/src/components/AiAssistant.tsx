@@ -1,82 +1,24 @@
 import { useState } from 'react'
 import { Bot, Send, Sparkles, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { useToast } from './Toast'
-
-interface Recommendation {
-  id: number
-  priority: string
-  color: string
-  bg: string
-  border: string
-  dot: string
-  title: string
-  impact: string
-  fix: string
-  codeSnippet?: string
-}
-
-const allRecommendations: Recommendation[] = [
-  {
-    id: 1,
-    priority: 'Critical Priority',
-    color: 'text-red-600 dark:text-red-400',
-    bg: 'bg-red-50 dark:bg-red-950/30',
-    border: 'border-red-200 dark:border-red-900/50',
-    dot: 'bg-red-500',
-    title: 'SQL Injection in /api/search.',
-    impact: 'Full database exfiltration possible.',
-    fix: 'Use parameterized queries with prepared statements.',
-    codeSnippet: 'const rows = await db.query("SELECT * FROM items WHERE title = $1", [param]);',
-  },
-  {
-    id: 2,
-    priority: 'High Priority',
-    color: 'text-orange-600 dark:text-orange-400',
-    bg: 'bg-orange-50 dark:bg-orange-950/30',
-    border: 'border-orange-200 dark:border-orange-900/50',
-    dot: 'bg-orange-500',
-    title: 'Detected insecure JWT storage in localStorage.',
-    impact: 'Account takeover via XSS script execution.',
-    fix: 'Store tokens in HttpOnly, Secure, SameSite=Strict cookies.',
-    codeSnippet: 'res.cookie("token", jwt, { httpOnly: true, secure: true, sameSite: "strict" });',
-  },
-  {
-    id: 3,
-    priority: 'Medium Priority',
-    color: 'text-amber-600 dark:text-amber-400',
-    bg: 'bg-amber-50 dark:bg-amber-950/30',
-    border: 'border-amber-200 dark:border-amber-900/50',
-    dot: 'bg-amber-500',
-    title: 'No rate limiting on /api/login.',
-    impact: 'Brute-force credential stuffing feasible.',
-    fix: 'Add exponential backoff after 5 attempts via Redis token bucket.',
-    codeSnippet: 'limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });',
-  },
-  {
-    id: 4,
-    priority: 'Medium Priority',
-    color: 'text-amber-600 dark:text-amber-400',
-    bg: 'bg-amber-50 dark:bg-amber-950/30',
-    border: 'border-amber-200 dark:border-amber-900/50',
-    dot: 'bg-amber-500',
-    title: 'Missing Content-Security-Policy (CSP) headers.',
-    impact: 'Inline script injection possible on untrusted DOM nodes.',
-    fix: "Set Content-Security-Policy: default-src 'self'; script-src 'self'.",
-    codeSnippet: "app.use(helmet.contentSecurityPolicy({ directives: { defaultSrc: [\"'self'\"] } }));",
-  },
-]
+import { useAppDispatch, useAppSelector } from '../store'
+import {
+  addUserMessageOptimistic,
+  clearMessages,
+  askCopilotAsync,
+} from '../store/slices/copilotSlice'
 
 export default function AiAssistant() {
   const { toast } = useToast()
+  const dispatch = useAppDispatch()
+  const { messages, recommendations: recs, isTyping } = useAppSelector((state) => state.copilot)
   const [showAll, setShowAll] = useState(false)
   const [query, setQuery] = useState('')
-  const [messages, setMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string; code?: string }>>([])
-  const [isTyping, setIsTyping] = useState(false)
-  const [copiedId, setCopiedId] = useState<number | null>(null)
+  const [copiedId, setCopiedId] = useState<number | string | null>(null)
 
-  const displayedRecs = showAll ? allRecommendations : allRecommendations.slice(0, 2)
+  const displayedRecs = showAll ? recs : recs.slice(0, 2)
 
-  const handleCopy = (rec: Recommendation) => {
+  const handleCopy = (rec: any) => {
     if (rec.codeSnippet) {
       navigator.clipboard?.writeText(rec.codeSnippet)
     } else {
@@ -91,42 +33,12 @@ export default function AiAssistant() {
     const textToSend = promptText || query.trim()
     if (!textToSend) return
 
-    setMessages(prev => [...prev, { sender: 'user', text: textToSend }])
+    // 0ms instant Optimistic UI update in Redux store
+    dispatch(addUserMessageOptimistic(textToSend))
     if (!promptText) setQuery('')
-    setIsTyping(true)
 
-    setTimeout(() => {
-      setIsTyping(false)
-      let reply = "Here is the recommended security patch for this issue."
-      let code = undefined
-
-      const lower = textToSend.toLowerCase()
-      if (lower.includes('scan on my code') || lower.includes('security scan')) {
-        reply = "Initiating multi-module scan job across World Monitor codebase. Launching Semgrep SAST for pattern matching, Gitleaks for exposed tokens, OSV-Scanner for third-party CVEs, and OWASP ZAP for runtime probes."
-        code = "celery -A scan_orchestrator worker --concurrency=4 -l info"
-      } else if (lower.includes('what vulnerabilities') || lower.includes('vulnerabilities were found')) {
-        reply = "Scan results identified 5 high-priority findings on World Monitor:\n1. SQL Injection in /api/search (CVSS 9.8 Critical)\n2. Broken Access Control / IDOR on /api/users/:id (CVSS 8.3 High)\n3. Hardcoded Secret Key in config (CVSS 9.1 Critical)\n4. Outdated Lodash prototype pollution (CVSS 6.8 Medium)\n5. Missing Rate Limiting on password reset (CVSS 7.5 High)."
-      } else if (lower.includes('sql') || lower.includes('explain the sql injection')) {
-        reply = "In worldmonitor/api/search.py, query parameter `q` is concatenated directly into SQL without sanitization. An attacker can inject `' OR 1=1--` to bypass authentication and dump the entire database."
-        code = "const query = 'SELECT * FROM findings WHERE query_text ILIKE $1';\nconst res = await db.query(query, ['%' + searchParam + '%']);"
-      } else if (lower.includes('how to fix') || lower.includes('fix this issue')) {
-        reply = "Remediation Strategy: 1. Replace raw SQL strings with prepared statement bindings. 2. Implement role-based access control (RBAC) middleware. 3. Rotate and vault all hardcoded keys."
-        code = "// Secure Parameterized Query\ndb.query('SELECT * FROM accounts WHERE id = $1', [userId])"
-      } else if (lower.includes('summary report') || lower.includes('give a summary')) {
-        reply = "World Monitor Security Executive Summary: Overall Risk Score: 68/100 (Medium). 2 Critical, 2 High, 1 Medium vulnerabilities found. 100% of findings validated in controlled testing. Compliance rating: OWASP Top 10 Action Needed."
-      } else if (lower.includes('jwt') || lower.includes('token')) {
-        reply = "Never store JWTs in browser localStorage. Issue an HttpOnly, Secure, SameSite=Strict cookie:"
-        code = "res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'strict' })"
-      } else if (lower.includes('rate') || lower.includes('brute')) {
-        reply = "Mount express-rate-limit middleware on authentication and password reset routes:"
-        code = "app.use('/api/auth/reset', rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }))"
-      } else {
-        reply = `RAG Analysis for "${textToSend}": Verify OWASP Top 10 vectors, enforce TLS 1.3, and run automated regression tests.`
-      }
-
-      setMessages(prev => [...prev, { sender: 'ai', text: reply, code }])
-      toast('success', 'AI Recommendation Ready', 'Copilot generated fix analysis')
-    }, 600)
+    // Asynchronous background AI query
+    dispatch(askCopilotAsync({ prompt: textToSend }))
   }
 
   return (
@@ -142,9 +54,19 @@ export default function AiAssistant() {
             <p className="text-[10px] text-slate-400 dark:text-slate-500">Context-aware remediation engine</p>
           </div>
         </div>
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-semibold flex items-center gap-1">
-          <Sparkles size={10} /> Active
-        </span>
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={() => dispatch(clearMessages())}
+              className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+            >
+              Clear Chat
+            </button>
+          )}
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-semibold flex items-center gap-1">
+            <Sparkles size={10} /> Active
+          </span>
+        </div>
       </div>
 
       {/* Recommendations List */}
@@ -201,7 +123,7 @@ export default function AiAssistant() {
           </>
         ) : (
           <>
-            Show Full Recommendations ({allRecommendations.length}) <ChevronDown size={13} />
+            Show Full Recommendations ({recs.length}) <ChevronDown size={13} />
           </>
         )}
       </button>

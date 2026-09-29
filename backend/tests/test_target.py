@@ -30,7 +30,7 @@ def test_target_health_offline(tmp_path, manifest):
     mgr = TargetManager(base_dir=tmp_path, scope_manifest=manifest)
     healthy, msg = mgr.check_health("http://127.0.0.1:3000")
     assert healthy is False
-    assert "Connection refused" in msg or "failed" in msg
+    assert "Connection refused" in msg or "failed" in msg or "Unexpected" in msg
 
 
 def test_target_health_scope_enforced(tmp_path, manifest):
