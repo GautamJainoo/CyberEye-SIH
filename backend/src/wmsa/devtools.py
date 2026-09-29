@@ -18,8 +18,34 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from wmsa.db import Database
+from wmsa import webaudit
+from wmsa.cdp import capture_page
 from wmsa.live_scanner import LiveScanner, _normalize_url
 from wmsa.scope import ScopeGuard, ScopeManifest, load_scope_manifest
+
+
+def _rate(value: Optional[float], good: float, poor: float) -> str:
+    if value is None:
+        return "Not measured"
+    return "Good" if value <= good else "Needs Improvement" if value <= poor else "Poor"
+
+
+def _lighthouse_metrics() -> Dict[str, Any]:
+    """Core Web Vitals from the latest real Lighthouse run. INP is a field metric and cannot be lab-measured."""
+    a = webaudit.latest()
+    m = (a or {}).get("metrics", {})
+    lcp = None if m.get("lcp_ms") is None else round(m["lcp_ms"] / 1000, 2)
+    fcp = None if m.get("fcp_ms") is None else round(m["fcp_ms"] / 1000, 2)
+    cls = m.get("cls")
+    tbt = m.get("tbt_ms")
+    return {
+        "lcp": {"value": lcp, "unit": "s", "status": _rate(lcp, 2.5, 4.0), "threshold": 2.5, "score": None},
+        "cls": {"value": cls, "unit": "", "status": _rate(cls, 0.1, 0.25), "threshold": 0.1, "score": None},
+        "fcp": {"value": fcp, "unit": "s", "status": _rate(fcp, 1.8, 3.0), "threshold": 1.8, "score": None},
+        "tbt": {"value": None if tbt is None else round(tbt), "unit": "ms", "status": _rate(tbt, 200, 600), "threshold": 200, "score": None},
+        "inp": {"value": None, "unit": "ms", "status": "Not measurable in lab (needs real user input)", "threshold": 200, "score": None},
+        "lighthouse_at": (a or {}).get("finished_at"),
+    }
 
 
 class DevToolsEngine:
@@ -67,169 +93,45 @@ class DevToolsEngine:
     def get_network_requests(
         self, target_url: str = "http://127.0.0.1:3000"
     ) -> List[Dict[str, Any]]:
-        """
-        Returns discovered network resources from a live crawl of the target URL.
-        For World Monitor, enriches with correlated DB findings.
-        """
+        """Real network waterfall recorded from headless Chrome (status, size and timing are measured)."""
         clean_url, domain = _normalize_url(target_url)
+        cap = capture_page(clean_url)
+        page_host = urllib.parse.urlparse(clean_url).netloc
 
-        # Fetch the page
-        resp, elapsed = self._scanner.fetch_timed(clean_url)
-        requests_out: List[Dict[str, Any]] = []
+        # Real findings keyed by route, so runtime requests link to what the scanners actually reported.
+        findings_by_route: Dict[str, Dict] = {}
+        with self.db.get_connection() as conn:
+            for row in conn.execute("SELECT finding_id, title, category, severity, data_json FROM findings").fetchall():
+                try:
+                    data = json.loads(row["data_json"])
+                    ep = data.get("endpoint") or ""
+                    if ep:
+                        findings_by_route[urllib.parse.urlparse(ep).path or ep] = dict(row) | data
+                except Exception:
+                    pass
 
-        # Main document request
-        doc_size = len(resp.content) / 1024 if resp else 0
-        main_status = resp.status_code if resp else 0
-        requests_out.append(
-            {
-                "id": "req-1",
-                "name": domain,
-                "path": "/",
-                "status": main_status if main_status else None,
-                "type": "Doc",
-                "initiator": "other",
-                "size": f"{doc_size:.1f} kB" if resp else None,
-                "time": round(elapsed * 1000),
-                "waterfallPct": 20,
-                "offsetPct": 0,
-                "isVuln": False,
-                "method": "GET",
-                "live": True,
-            }
-        )
-
-        # Discover sub-resources
-        assets = self._scanner.crawl_links(resp, clean_url)
-        # Security header scan (for vuln flag on main request)
-        header_list, _ = self._scanner.scan_security_headers(resp, domain)
-        failing_headers = [h for h in header_list if h["status"] == "FAIL"]
-        if failing_headers:
-            requests_out[0]["isVuln"] = True
-            h0 = failing_headers[0]
-            requests_out[0]["vulnTag"] = f"Missing {h0['name']} ({h0.get('cwe', '')})"
-            requests_out[0]["vulnDesc"] = h0.get("risk", "Security header missing")
-
-        for i, asset in enumerate(assets[:8], start=2):
-            asset_path = asset["path"]
-            asset_type = self._classify_asset(asset_path)
-            offset = min(10 + i * 6, 80)
-            time_ms = max(10, round(elapsed * 1000 * 0.3 + i * 8))
-            waterfall = max(5, min(30, 35 - i * 2))
-
-            is_vuln = False
-            vuln_tag = None
-            vuln_desc = None
-
-            # Flag external scripts (potential third-party risk)
-            if asset_type == "JS" and asset.get("external"):
-                is_vuln = True
-                vuln_tag = "Third-Party Script (CWE-829)"
-                vuln_desc = f"External JS from {urllib.parse.urlparse(asset['url']).netloc} loaded without Subresource Integrity (SRI)"
-
-            requests_out.append(
-                {
-                    "id": f"req-{i}",
-                    "name": asset_path,
-                    "path": asset_path,
-                    "status": 200,
-                    "type": asset_type,
-                    "initiator": "(index)" if asset_type == "Doc" else f"page.{asset_type.lower()}",
-                    "size": None,  # Not fetching each asset individually
-                    "time": time_ms,
-                    "waterfallPct": waterfall,
-                    "offsetPct": offset,
-                    "isVuln": is_vuln,
-                    "vulnTag": vuln_tag,
-                    "vulnDesc": vuln_desc,
-                    "method": "GET",
-                    "live": True,
-                }
-            )
-
-        # For World Monitor: overlay DB findings on known paths
-        if self._is_worldmonitor(domain):
-            findings_by_route: Dict[str, Dict] = {}
-            with self.db.get_connection() as conn:
-                rows = conn.execute(
-                    "SELECT finding_id, title, category, severity, data_json FROM findings"
-                ).fetchall()
-                for row in rows:
-                    try:
-                        data = json.loads(row["data_json"])
-                        ep = data.get("endpoint") or ""
-                        if ep:
-                            parsed_ep = urllib.parse.urlparse(ep)
-                            path_key = parsed_ep.path or ep
-                            findings_by_route[path_key] = dict(row) | data
-                    except Exception:
-                        pass
-
-            for req in requests_out:
-                path = req["path"]
-                if path in findings_by_route:
-                    fb = findings_by_route[path]
-                    req["isVuln"] = True
-                    req["vulnTag"] = f"{fb.get('category', 'DAST').upper()} ({fb.get('severity', '')})"
-                    req["vulnDesc"] = fb.get("title", "")
-                    req["backendFindingId"] = fb.get("finding_id")
-
-            # Add well-known WM assessment routes that come from DB
-            wm_known_routes = [
-                {
-                    "id": f"req-wm-1",
-                    "name": "/api/rss-proxy?url=http://127.0.0.1:46123/keys",
-                    "path": "/api/rss-proxy",
-                    "status": 200,
-                    "type": "Fetch/XHR",
-                    "initiator": "rss.ts:48",
-                    "size": "14.8 kB",
-                    "time": 76,
-                    "waterfallPct": 34,
-                    "offsetPct": 70,
-                    "isVuln": True,
-                    "vulnTag": "SSRF CWE-918",
-                    "vulnDesc": "Unvalidated loopback forwarding allows internal network probing",
-                    "method": "GET",
-                    "live": False,
-                },
-                {
-                    "id": f"req-wm-2",
-                    "name": "/api/news",
-                    "path": "/api/news",
-                    "status": 200,
-                    "type": "Fetch/XHR",
-                    "initiator": "news.ts:112",
-                    "size": "42.1 kB",
-                    "time": 54,
-                    "waterfallPct": 26,
-                    "offsetPct": 78,
-                    "isVuln": True,
-                    "vulnTag": "CORS CWE-942",
-                    "vulnDesc": "Wildcard Access-Control-Allow-Origin: * without origin verification",
-                    "method": "GET",
-                    "live": False,
-                },
-                {
-                    "id": f"req-wm-3",
-                    "name": "/api/search?q=' OR 1=1--",
-                    "path": "/api/search",
-                    "status": 200,
-                    "type": "Fetch/XHR",
-                    "initiator": "search.ts:34",
-                    "size": "18.3 kB",
-                    "time": 88,
-                    "waterfallPct": 42,
-                    "offsetPct": 85,
-                    "isVuln": True,
-                    "vulnTag": "SQLi CWE-89",
-                    "vulnDesc": "Unescaped search query concatenated into SQL/FTS filter",
-                    "method": "GET",
-                    "live": False,
-                },
-            ]
-            requests_out.extend(wm_known_routes)
-
-        return requests_out
+        span = max([r["start_ms"] + (r["duration_ms"] or 0) for r in cap["requests"]] + [1])
+        type_map = {"Document": "Doc", "Script": "JS", "Stylesheet": "CSS", "Image": "Img", "Font": "Font",
+                    "XHR": "Fetch/XHR", "Fetch": "Fetch/XHR"}
+        out: List[Dict[str, Any]] = []
+        for i, r in enumerate(cap["requests"], 1):
+            is_vuln, tag, desc, fid = False, None, None, None
+            fb = findings_by_route.get(r["path"])
+            if fb:
+                is_vuln, tag, desc, fid = True, f"{fb.get('category', '').upper()} ({fb.get('severity', '')})", fb.get("title"), fb.get("finding_id")
+            elif r["type"] == "Script" and r["host"] != page_host:
+                is_vuln, tag = True, "Third-party script"
+                desc = f"Script loaded from {r['host']} (outside the assessed origin)"
+            out.append({
+                "id": f"req-{i}", "name": r["name"], "path": r["path"], "status": r["status"],
+                "type": type_map.get(r["type"], r["type"]), "initiator": r["initiator"].rsplit("/", 1)[-1] or "other",
+                "size": f"{r['transfer_bytes'] / 1024:.1f} kB" if r["transfer_bytes"] is not None else None,
+                "time": r["duration_ms"], "waterfallPct": max(1, round((r["duration_ms"] or 0) / span * 100)),
+                "offsetPct": min(99, round(r["start_ms"] / span * 100)), "isVuln": is_vuln, "vulnTag": tag,
+                "vulnDesc": desc, "backendFindingId": fid, "method": r["method"], "failed": r["failed"],
+                "protocol": r["protocol"], "live": True,
+            })
+        return out
 
     def get_security_analysis(
         self, target_url: str = "http://127.0.0.1:3000"
@@ -278,21 +180,6 @@ class DevToolsEngine:
             overall_status = f"Needs Attention — {warn_count} Header Warning(s)"
         else:
             overall_status = "Hardened — All Headers Present"
-
-        # For WM: add known findings from DB to the security_headers list
-        if is_wm:
-            # Inject WM-specific known findings
-            header_list.append(
-                {
-                    "name": "Access-Control-Allow-Origin (CORS)",
-                    "status": "FAIL",
-                    "severity": "High",
-                    "value": "*",
-                    "recommendation": "Restrict to trusted explicit origins; remove wildcard with credentials.",
-                    "risk": "Wildcard origin exposes sensitive API responses to arbitrary domains",
-                    "cwe": "CWE-942",
-                }
-            )
 
         return {
             "origin": clean_url,
@@ -349,10 +236,7 @@ class DevToolsEngine:
             "metrics": {
                 "ttfb": _rate_ttfb(ttfb),
                 "total_load": _rate_load(total),
-                "lcp": {"value": None, "unit": "s", "status": "N/A (client-side metric)", "threshold": 2.5, "score": None},
-                "inp": {"value": None, "unit": "ms", "status": "N/A (client-side metric)", "threshold": 200, "score": None},
-                "cls": {"value": None, "unit": "", "status": "N/A (client-side metric)", "threshold": 0.1, "score": None},
-                "fcp": {"value": None, "unit": "s", "status": "N/A (client-side metric)", "threshold": 1.8, "score": None},
+                **_lighthouse_metrics(),
             },
             "summary": {
                 "overall_score": overall_score,
@@ -368,100 +252,43 @@ class DevToolsEngine:
     def get_storage_audit(
         self, target_url: str = "http://127.0.0.1:3000"
     ) -> Dict[str, Any]:
-        """
-        Real cookie inspection from HTTP response for any target URL.
-        localStorage / sessionStorage cannot be accessed server-side — returned as empty list.
-        """
+        """Cookies, web storage and service workers as observed in a real browser session."""
         clean_url, domain = _normalize_url(target_url)
-        is_wm = self._is_worldmonitor(domain)
-
-        resp = self._scanner.fetch(clean_url)
-        cookies = self._scanner.scan_cookies(resp, domain)
-
-        # For WM, add known vulnerability findings from assessment
-        if is_wm:
-            wm_local_storage = [
-                {
-                    "key": "auth_token",
-                    "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZWNpcGllbnQiOiJhZG1pbiJ9…",
-                    "isSensitive": True,
-                    "cwe": "CWE-922",
-                    "risk": "High",
-                    "description": "JWT token persisted in localStorage — accessible via JavaScript (XSS vulnerable)",
-                    "fix": "Migrate to HttpOnly, Secure, SameSite=Strict session cookie",
-                    "live": False,
-                    "note": "SIH 26163 assessment finding",
-                },
-                {
-                    "key": "user_settings",
-                    "value": '{"theme":"dark","notifications":true}',
-                    "isSensitive": False,
-                    "cwe": None,
-                    "risk": "None",
-                    "description": "User interface preferences",
-                    "fix": None,
-                    "live": False,
-                },
-            ]
-            service_workers = [
-                {
-                    "scope": f"https://{domain}/",
-                    "script": f"https://{domain}/sw.js",
-                    "status": "Active & Running (SIH Assessment)",
-                    "cache_storage_kb": 1240,
-                    "live": False,
-                }
-            ]
-        else:
-            wm_local_storage = []
-            # Attempt to detect service worker registration hint from HTML
-            service_workers = []
-            if resp is not None:
-                try:
-                    from bs4 import BeautifulSoup  # type: ignore
-                    soup = BeautifulSoup(resp.text, "lxml")
-                    scripts = soup.find_all("script")
-                    for s in scripts:
-                        if s.string and "serviceWorker" in s.string:
-                            service_workers.append(
-                                {
-                                    "scope": f"https://{domain}/",
-                                    "script": "Detected in page script",
-                                    "status": "Registration detected (client-side verification needed)",
-                                    "cache_storage_kb": None,
-                                    "live": True,
-                                }
-                            )
-                            break
-                except Exception:
-                    pass
-
-        # LocalStorage note for non-WM targets
-        if not is_wm:
-            local_storage_note = [
-                {
-                    "key": "(not accessible server-side)",
-                    "value": None,
-                    "isSensitive": False,
-                    "cwe": None,
-                    "risk": "N/A",
-                    "description": "localStorage and sessionStorage can only be inspected from the browser. Run the Chrome DevTools Console.",
-                    "fix": None,
-                    "live": True,
-                }
-            ]
-        else:
-            local_storage_note = wm_local_storage
-
+        cap = capture_page(clean_url)
         return {
             "domain": domain,
-            "cookies": cookies,
+            "cookies": cap["cookies"],
             "cookies_from_live_scan": True,
-            "local_storage": local_storage_note,
-            "service_workers": service_workers,
-            "scan_time": datetime.now(timezone.utc).isoformat(),
+            "local_storage": cap["local_storage"] + [{**e, "key": f"[session] {e['key']}"} for e in cap["session_storage"]],
+            "service_workers": [
+                {"scope": w.get("scope"), "script": w.get("script"), "status": w.get("state") or "registered",
+                 "cache_storage_kb": None, "live": True} for w in cap["service_workers"]
+            ],
+            "scan_time": cap["captured_at"],
             "live": True,
         }
+
+    def get_page_info(self, target_url: str = "http://127.0.0.1:3000", refresh: bool = False) -> Dict[str, Any]:
+        """Real page-level timings and browser memory metrics from the captured session."""
+        clean_url, _ = _normalize_url(target_url)
+        cap = capture_page(clean_url, use_cache=not refresh)
+        reqs = cap["requests"]
+        return {
+            "captured_at": cap["captured_at"], "title": cap["title"], "load_ms": cap["load_ms"], "dcl_ms": cap["dcl_ms"],
+            "span_ms": cap["span_ms"], "request_count": len(reqs),
+            "transfer_kb": round(sum(r["transfer_bytes"] or 0 for r in reqs) / 1024, 1),
+            "failed_count": sum(1 for r in reqs if r["failed"]),
+            "memory": cap["memory"],
+            "console_counts": {lvl: sum(1 for m in cap["console"] if m["level"] in grp)
+                               for lvl, grp in (("errors", ("error",)), ("warnings", ("warning", "warn")))},
+        }
+
+    def get_console_log(self, target_url: str = "http://127.0.0.1:3000") -> Dict[str, Any]:
+        """Console / log messages emitted by the page during a real load."""
+        clean_url, _ = _normalize_url(target_url)
+        cap = capture_page(clean_url)
+        return {"messages": cap["console"], "captured_at": cap["captured_at"], "page_title": cap["title"],
+                "load_ms": cap["load_ms"], "request_count": len(cap["requests"])}
 
     def get_custom_target_findings(self, target_url: str) -> List[Dict[str, Any]]:
         """
@@ -508,9 +335,8 @@ class DevToolsEngine:
                 "output": (
                     "Available DevTools Commands:\n"
                     "  status              Show target loopback health and DB findings\n"
-                    "  probe <url>         Live probe any URL (e.g. probe https://example.com)\n"
-                    "  headers <url>       Live audit security headers of a URL\n"
-                    "  ssl <domain>        Live TLS certificate scan (e.g. ssl amazon.in)\n"
+                    "  probe <url>         Probe an in-scope (loopback) URL\n"
+                    "  headers <url>       Audit security headers of an in-scope URL\n"
                     "  findings            List summary of candidate and verified findings\n"
                     "  clear               Clear console log buffer\n"
                     "  version             Display WMSA platform version"
@@ -524,15 +350,15 @@ class DevToolsEngine:
             with self.db.get_connection() as conn:
                 count = conn.execute("SELECT count(*) as c FROM findings").fetchone()["c"]
                 open_count = conn.execute(
-                    "SELECT count(*) as c FROM findings WHERE status = 'DISCOVERED'"
+                    "SELECT count(*) as c FROM findings WHERE status = 'CANDIDATE'"
                 ).fetchone()["c"]
             return {
                 "type": "log",
                 "output": (
-                    f"Target URL: {self.manifest.repo_url}\n"
+                    f"Source repo: {self.manifest.repo_url}\n"
                     f"Commit SHA: {self.manifest.commit_sha[:8]}\n"
-                    f"Findings Total: {count} (Open/Discovered: {open_count})\n"
-                    f"Scanner Mode: Live Real-Time (No Hardcoded Data)"
+                    f"Findings Total: {count} ({open_count} unverified candidates)\n"
+                    f"Scope: loopback only (127.0.0.1)"
                 ),
             }
 
@@ -552,6 +378,10 @@ class DevToolsEngine:
         if cmd == "headers":
             url = args[0] if args else "http://127.0.0.1:3000"
             clean_url, domain = _normalize_url(url)
+            try:
+                ScopeGuard(self.manifest).guard(clean_url)
+            except Exception as e:
+                return {"type": "error", "output": f"Scope violation: {e}"}
             resp = self._scanner.fetch(clean_url)
             header_list, score = self._scanner.scan_security_headers(resp, domain)
             fails = [h for h in header_list if h["status"] == "FAIL"]
@@ -569,24 +399,7 @@ class DevToolsEngine:
             }
 
         if cmd == "ssl":
-            domain = args[0] if args else "worldmonitor.app"
-            # Strip protocol if provided
-            domain = domain.replace("https://", "").replace("http://", "").split("/")[0]
-            ssl_data = self._scanner.scan_ssl(domain)
-            if ssl_data.get("error"):
-                return {"type": "error", "output": f"SSL scan failed: {ssl_data['error']}"}
-            return {
-                "type": "log",
-                "output": (
-                    f"SSL Scan: {domain}\n"
-                    f"  TLS Version : {ssl_data['tls_version']}\n"
-                    f"  Cipher      : {ssl_data['cipher']} ({ssl_data['cipher_bits']} bits)\n"
-                    f"  Subject     : {ssl_data['subject']}\n"
-                    f"  Issuer      : {ssl_data['issuer']}\n"
-                    f"  Valid To    : {ssl_data['valid_to']}\n"
-                    f"  SANs        : {', '.join((ssl_data['sans'] or [])[:4])}"
-                ),
-            }
+            return {"type": "warn", "output": "TLS scanning is disabled: only the loopback target (plain HTTP) is in scope."}
 
         if cmd == "probe":
             if not args:
@@ -618,27 +431,6 @@ class DevToolsEngine:
                         "output": f"Loopback probe for {url}: target not running or port closed",
                     }
 
-            # External target — real probe
-            t0 = time.time()
-            try:
-                with httpx.Client(
-                    timeout=8.0,
-                    follow_redirects=True,
-                    headers={"User-Agent": "SecureLens-Scanner/2.0"},
-                ) as client:
-                    resp = client.get(url)
-                    elapsed = (time.time() - t0) * 1000
-                    server = resp.headers.get("server", "--")
-                    ct = resp.headers.get("content-type", "--")
-                    return {
-                        "type": "log",
-                        "output": (
-                            f"HTTP {resp.status_code} — {elapsed:.0f}ms — {len(resp.content)} bytes\n"
-                            f"  Server: {server}\n"
-                            f"  Content-Type: {ct}"
-                        ),
-                    }
-            except Exception as e:
-                return {"type": "error", "output": f"Probe failed: {e}"}
+            return {"type": "error", "output": "Scope violation: only loopback targets (127.0.0.1 / localhost) may be probed."}
 
-        return {"type": "log", "output": f"Command executed: {cmd_line}"}
+        return {"type": "error", "output": f"Unknown command: {cmd}. Type help."}

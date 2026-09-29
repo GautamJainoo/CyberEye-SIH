@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Response
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -26,7 +27,8 @@ from wmsa.retest import RetestEngine
 from wmsa.scope import ScopeGuard, load_scope_manifest
 from wmsa.target import TargetManager
 from wmsa.devtools import DevToolsEngine
-from wmsa.seed import seed_worldmonitor_findings
+from wmsa import dashboard as dashboard_mod, enrich as enrich_mod, pipeline as pipeline_mod, proof as proof_mod, webaudit as webaudit_mod
+from wmsa.paths import get_base_dir
 
 api_app = FastAPI(
     title="WMSA Local Assessment API",
@@ -42,6 +44,8 @@ api_app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5173",
         "http://127.0.0.1:5174",
+        "http://127.0.0.1:3100",
+        "http://localhost:3100",
         "http://localhost:5174",
         "http://127.0.0.1:3000",
         "http://localhost:3000",
@@ -110,8 +114,6 @@ def api_health():
     manifest = load_scope_manifest()
     with db.get_connection() as conn:
         count = conn.execute("SELECT count(*) as c FROM findings").fetchone()["c"]
-        if count == 0:
-            count = seed_worldmonitor_findings(db)
     return {
         "status": "online",
         "repo_url": manifest.repo_url,
@@ -121,12 +123,6 @@ def api_health():
         "environment": "local-isolated",
         "findings_count": count,
     }
-
-
-@api_app.post("/api/db/seed")
-def seed_db_endpoint():
-    count = seed_worldmonitor_findings(db)
-    return {"status": "seeded", "findings_count": count}
 
 
 @api_app.post("/api/target/configure")
@@ -177,6 +173,7 @@ def list_findings(
 ):
     if target_url:
         from wmsa.live_scanner import _normalize_url
+        _require_in_scope(target_url)  # external scanning is out of scope
         clean_url, domain = _normalize_url(target_url)
         if not devtools_engine._is_worldmonitor(domain):
             custom_findings = devtools_engine.get_custom_target_findings(target_url)
@@ -255,13 +252,134 @@ def get_finding_detail(finding_id: str):
             ).fetchall()
         ]
 
+    enrich_mod.ensure_table(db)
+    with db.get_connection() as conn:
+        arow = conn.execute(
+            "SELECT analysis_json, model FROM finding_analysis WHERE finding_id = ?", (finding_id,)
+        ).fetchone()
+        sources = [
+            dict(x)
+            for x in conn.execute(
+                "SELECT tool_name, tool_version, rule_id, snippet_hash, raw_ref FROM finding_sources WHERE finding_id = ?",
+                (finding_id,),
+            ).fetchall()
+        ]
+        runs = {
+            r["tool_name"]: dict(r)
+            for r in conn.execute(
+                "SELECT run_id, tool_name, tool_version, command_line, exit_code, raw_output_sha256, duration_seconds, created_at FROM tool_runs ORDER BY created_at"
+            ).fetchall()
+        }
+    fd = f.model_dump()
+    base = get_base_dir()
+    ctx = enrich_mod.code_context(base / "target", fd.get("file"), fd.get("line_start"), fd.get("line_end"), radius=12)
+    proof_file = base / "evidence" / "proof" / f"{finding_id}.png"
     return {
-        "finding": f.model_dump(),
+        "finding": fd,
         "evidence": ev_list,
         "timeline": transitions,
         "patches": patches,
         "retests": retests,
+        "sources": sources,
+        "analysis": json.loads(arow["analysis_json"]) if arow else None,
+        "analysis_model": arow["model"] if arow else None,
+        "code_context": ctx,
+        "tool_run": runs.get(sources[0]["tool_name"]) if sources else None,
+        "proof_url": f"/api/proof/{finding_id}.png" if proof_file.exists() else None,
     }
+
+
+
+# ── Pipeline, enrichment, proofs and admin data ─────────────────────────────
+
+class PipelineRequest(BaseModel):
+    fresh: bool = True
+    setup: bool = True
+
+
+@api_app.post("/api/pipeline/start")
+def pipeline_start(req: PipelineRequest):
+    if not pipeline_mod.start(db, orchestrator, fresh=req.fresh, do_setup=req.setup):
+        raise HTTPException(status_code=409, detail="A pipeline run is already in progress")
+    return {"status": "started"}
+
+
+@api_app.get("/api/pipeline/status")
+def pipeline_status():
+    return pipeline_mod.get_state()
+
+
+@api_app.post("/api/enrich")
+def run_enrichment(background: BackgroundTasks, force: bool = False):
+    background.add_task(enrich_mod.enrich_findings, db, None, None, force)
+    return {"status": "started"}
+
+
+@api_app.post("/api/proof/build")
+def run_proof_build(background: BackgroundTasks, force: bool = False):
+    background.add_task(proof_mod.build_proofs, db, None, force)
+    return {"status": "started"}
+
+
+@api_app.get("/api/proof/{finding_id}.png")
+def get_proof_image(finding_id: str):
+    if not finding_id.replace("-", "").replace("_", "").isalnum():
+        raise HTTPException(status_code=400, detail="bad id")
+    path = get_base_dir() / "evidence" / "proof" / f"{finding_id}.png"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="proof image not generated yet")
+    return FileResponse(path, media_type="image/png")
+
+
+@api_app.get("/api/admin/overview")
+def admin_overview():
+    enrich_mod.ensure_table(db)
+    base = get_base_dir()
+    with db.get_connection() as conn:
+        scans = [dict(r) for r in conn.execute("SELECT * FROM scans ORDER BY created_at DESC LIMIT 20").fetchall()]
+        runs = [dict(r) for r in conn.execute("SELECT * FROM tool_runs ORDER BY created_at DESC LIMIT 60").fetchall()]
+        by_tool = [dict(r) for r in conn.execute(
+            "SELECT s.tool_name, count(distinct s.finding_id) AS findings FROM finding_sources s GROUP BY s.tool_name"
+        ).fetchall()]
+        by_sev = [dict(r) for r in conn.execute("SELECT severity, count(*) AS n FROM findings GROUP BY severity").fetchall()]
+        by_status = [dict(r) for r in conn.execute("SELECT status, count(*) AS n FROM findings GROUP BY status").fetchall()]
+        total = conn.execute("SELECT count(*) AS c FROM findings").fetchone()["c"]
+        analysed = conn.execute("SELECT count(*) AS c FROM finding_analysis").fetchone()["c"]
+        audit = [dict(r) for r in conn.execute("SELECT event_type, actor_type, actor_id, timestamp FROM audit_events ORDER BY timestamp DESC LIMIT 40").fetchall()]
+    for r in runs:
+        r["raw_output_path"] = Path(r["raw_output_path"]).name
+        try:
+            r["metrics"] = None
+        except Exception:
+            pass
+    proofs = len(list((base / "evidence" / "proof").glob("*.png"))) if (base / "evidence" / "proof").exists() else 0
+    healthy, msg = target_mgr.check_health()
+    return {
+        "scans": scans, "tool_runs": runs, "findings_by_tool": by_tool, "findings_by_severity": by_sev,
+        "findings_by_status": by_status, "findings_total": total, "findings_analysed": analysed,
+        "proof_images": proofs, "audit": audit, "target_healthy": healthy, "target_message": msg,
+        "pipeline": pipeline_mod.get_state(),
+    }
+
+
+@api_app.get("/api/admin/runs/{run_id}/raw", response_class=PlainTextResponse)
+def admin_raw_output(run_id: str):
+    from wmsa.adapters.gitleaks import redact
+    with db.get_connection() as conn:
+        row = conn.execute("SELECT raw_output_path FROM tool_runs WHERE run_id = ?", (run_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="run not found")
+    path = Path(row["raw_output_path"])
+    evidence_root = (get_base_dir() / "evidence").resolve()
+    if not path.exists() or evidence_root not in path.resolve().parents:
+        raise HTTPException(status_code=404, detail="raw output unavailable")
+    return redact(path.read_text(encoding="utf-8", errors="replace")[:200_000])
+
+
+@api_app.get("/api/admin/review-notes", response_class=PlainTextResponse)
+def admin_review_notes():
+    files = sorted((get_base_dir() / "evidence").glob("**/gemini_review_*.md"), key=lambda p: p.stat().st_mtime)
+    return files[-1].read_text(encoding="utf-8") if files else "No Gemini review has been run yet."
 
 
 @api_app.post("/api/scan")
@@ -336,7 +454,13 @@ def run_retest(finding_id: str, req: RetestTriggerRequest):
 
 
 @api_app.get("/api/report/export")
-def export_report(format: str = Query("json", pattern="^(json|html)$")):
+def export_report(format: str = Query("json", pattern="^(json|html|pdf)$")):
+    if format == "pdf":
+        pdf = proof_mod.html_to_pdf(report_exporter.export_html())
+        if pdf is None:
+            raise HTTPException(status_code=503, detail="PDF rendering needs Chrome/Chromium on the server")
+        return Response(content=pdf, media_type="application/pdf",
+                        headers={"Content-Disposition": "attachment; filename=worldmonitor_security_report.pdf"})
     if format == "html":
         html_content = report_exporter.export_html()
         return Response(content=html_content, media_type="text/html")
@@ -365,24 +489,51 @@ def search_intel(q: str = Query(..., min_length=1), limit: int = 50):
 
 # --- Chrome DevTools Suite Endpoints ---
 
+def _require_in_scope(url: str) -> str:
+    """Only loopback / manifest-approved targets may be inspected (no external scanning)."""
+    try:
+        return ScopeGuard(load_scope_manifest()).guard(url)
+    except Exception as e:
+        raise HTTPException(status_code=403, detail=f"Out of scope: {e}")
+
+
 @api_app.get("/api/devtools/network")
-def get_devtools_network(target_url: str = "http://127.0.0.1:3000"):
-    return {"requests": devtools_engine.get_network_requests(target_url)}
+def get_devtools_network(target_url: str = "http://127.0.0.1:3000", refresh: bool = False):
+    _require_in_scope(target_url)
+    if refresh:
+        devtools_engine.get_page_info(target_url, refresh=True)  # forces a fresh browser capture
+    return {"requests": devtools_engine.get_network_requests(target_url),
+            "page": devtools_engine.get_page_info(target_url)}
+
+
+@api_app.get("/api/devtools/page")
+def get_devtools_page(target_url: str = "http://127.0.0.1:3000"):
+    _require_in_scope(target_url)
+    return devtools_engine.get_page_info(target_url)
 
 
 @api_app.get("/api/devtools/security")
 def get_devtools_security(target_url: str = "http://127.0.0.1:3000"):
+    _require_in_scope(target_url)
     return devtools_engine.get_security_analysis(target_url)
 
 
 @api_app.get("/api/devtools/performance")
 def get_devtools_performance(target_url: str = "http://127.0.0.1:3000"):
+    _require_in_scope(target_url)
     return devtools_engine.get_performance_telemetry(target_url)
 
 
 @api_app.get("/api/devtools/storage")
 def get_devtools_storage(target_url: str = "http://127.0.0.1:3000"):
+    _require_in_scope(target_url)
     return devtools_engine.get_storage_audit(target_url)
+
+
+@api_app.get("/api/devtools/console-log")
+def get_devtools_console_log(target_url: str = "http://127.0.0.1:3000"):
+    _require_in_scope(target_url)
+    return devtools_engine.get_console_log(target_url)
 
 
 @api_app.post("/api/devtools/console/exec")
@@ -394,39 +545,32 @@ def exec_devtools_console(req: DevToolsConsoleRequest):
 
 @api_app.get("/api/network/inspect")
 def get_network_inspect(target_url: str = "http://127.0.0.1:3000"):
+    _require_in_scope(target_url)
     requests = devtools_engine.get_network_requests(target_url)
     metrics = [
         {
-            "id": r["id"],
-            "name": r["name"],
-            "path": r["path"],
-            "type": "API Endpoint" if "api" in r["path"] else "HTML Page",
-            "latencyMs": r["time"],
-            "speedIndex": f"{r['time'] / 100:.2f}s",
-            "pageSize": r["size"],
-            "httpStatus": r["status"],
-            "securityStatus": "Vulnerable" if r.get("isVuln") else "Secure",
-            "findingTag": r.get("vulnTag"),
-            "findingDesc": r.get("vulnDesc"),
+            "id": r["id"], "name": r["name"], "path": r["path"],
+            "type": "API Endpoint" if r["path"].startswith("/api") else r["type"],
+            "latencyMs": r["time"], "startMs": round(r["offsetPct"]),  # percent of the load window "pageSize": r["size"],
+            "httpStatus": r["status"], "protocol": r.get("protocol"),
+            "securityStatus": "Flagged" if r.get("isVuln") else "No finding",
+            "findingTag": r.get("vulnTag"), "findingDesc": r.get("vulnDesc"),
+            "backendFindingId": r.get("backendFindingId"),
         }
         for r in requests
     ]
-    avg_latency = sum(r["time"] for r in requests) // len(requests) if requests else 0
-    # Get real perf data for summary
+    timed = [r["time"] for r in requests if r["time"] is not None]
     perf = devtools_engine.get_performance_telemetry(target_url)
-    perf_summary = perf.get("summary", {})
-    perf_metrics = perf.get("metrics", {})
-    ttfb_val = perf_metrics.get("ttfb", {}).get("value")
-    total_kb = perf_summary.get("total_transfer_kb")
+    ttfb_val = perf.get("metrics", {}).get("ttfb", {}).get("value")
+    doc = next((r for r in requests if r["type"] == "Doc"), None)
+    total_kb = sum(float(r["size"].split()[0]) for r in requests if r.get("size"))
     summary = {
-        "averageLatency": f"{avg_latency} ms",
+        "averageLatency": f"{round(sum(timed) / len(timed))} ms" if timed else "--",
         "ttfb": f"{ttfb_val} ms" if ttfb_val is not None else "--",
         "totalRequests": len(requests),
-        "totalTransferSize": f"{total_kb:.1f} KB" if total_kb else "--",
-        "uncompressedSize": "--",
-        "httpProtocol": perf.get("metrics", {}).get("ttfb", {}).get("status", "--"),
-        "dnsLookup": "--",
-        "sslHandshake": "--",
+        "totalTransferSize": f"{total_kb:.1f} kB" if requests else "--",
+        "httpProtocol": (doc or {}).get("protocol") or "--",
+        "failedRequests": sum(1 for r in requests if r.get("failed")),
         "live": True,
     }
     return {"summary": summary, "metrics": metrics}
@@ -442,276 +586,48 @@ def probe_network_endpoint(req: NetworkProbeRequest):
 
 @api_app.post("/api/copilot/chat")
 def copilot_chat(req: CopilotChatRequest):
-    prompt_lower = req.prompt.lower()
-    
-    # Query findings context from DB
-    findings = []
-    with db.get_connection() as conn:
-        rows = conn.execute(
-            "SELECT finding_id, title, category, severity, data_json, cvss_score FROM findings LIMIT 10"
-        ).fetchall()
-        for r in rows:
-            try:
-                data = json.loads(r["data_json"])
-                findings.append({**r, **data})
-            except Exception:
-                findings.append(r)
-
-    remediation_code = ""
-    reply = ""
-
-    matched_finding = None
-    if req.finding_id:
-        matched_finding = next((f for f in findings if f.get("finding_id") == req.finding_id), None)
-
-    if not matched_finding:
-        for f in findings:
-            if (f.get("cve") and any(c.lower() in prompt_lower for c in f["cve"])) or \
-               (f.get("category") and f["category"].lower() in prompt_lower) or \
-               (f.get("file") and f["file"].lower() in prompt_lower) or \
-               any(w in prompt_lower for w in f["title"].lower().split()):
-                matched_finding = f
-                break
-
-    if "ssrf" in prompt_lower or (matched_finding and "ssrf" in str(matched_finding).lower()):
-        reply = (
-            "### Vulnerability: Server-Side Request Forgery (SSRF) in `/api/rss-proxy` (CWE-918)\n\n"
-            "**Root Cause**: The RSS proxy forwards client-supplied URLs without strictly validating the destination host against an allowlist, allowing an attacker to probe loopback services (e.g. `http://127.0.0.1:46123/keys`) and internal cloud metadata.\n\n"
-            "**Remediation Recommendation**:\n"
-            "1. Implement strict domain allowlisting using DNS resolution before fetching.\n"
-            "2. Reject all private RFC 1918 addresses, loopback (`127.0.0.0/8`), and link-local (`169.254.169.254`).\n"
-            "3. Disable automatic HTTP redirect following to private IP addresses."
-        )
-        remediation_code = (
-            "// Secure RSS Proxy Domain Validator\n"
-            "import { isLoopbackOrPrivateIP } from '../utils/network-guard';\n\n"
-            "export async function fetchSafeRss(targetUrl: string) {\n"
-            "  const parsed = new URL(targetUrl);\n"
-            "  if (!ALLOWED_FEED_DOMAINS.includes(parsed.hostname)) {\n"
-            "    throw new Error('403 Forbidden: Host domain not in allowed feed registry');\n"
-            "  }\n"
-            "  const resolvedIP = await dns.resolve(parsed.hostname);\n"
-            "  if (isLoopbackOrPrivateIP(resolvedIP)) {\n"
-            "    throw new Error('403 Forbidden: Loopback or private IP resolution prohibited');\n"
-            "  }\n"
-            "  return fetch(targetUrl, { redirect: 'manual' });\n"
-            "}"
-        )
-    elif "cors" in prompt_lower or (matched_finding and "cors" in str(matched_finding).lower()):
-        reply = (
-            "### Vulnerability: Permissive Wildcard CORS with Credentials (CWE-942)\n\n"
-            "**Root Cause**: In `/api/news`, `Access-Control-Allow-Origin: *` is combined with credentials, allowing any untrusted domain to execute authenticated cross-origin requests and read sensitive responses.\n\n"
-            "**Remediation Recommendation**:\n"
-            "Reflect strictly verified origin domains and specify explicit allowed methods and headers."
-        )
-        remediation_code = (
-            "// Remediated CORS Header Middleware\n"
-            "const ALLOWED_ORIGINS = ['http://127.0.0.1:3000', 'https://worldmonitor.app'];\n\n"
-            "export function applyCorsHeaders(req: Request, res: Response) {\n"
-            "  const origin = req.headers.get('origin');\n"
-            "  if (origin && ALLOWED_ORIGINS.includes(origin)) {\n"
-            "    res.setHeader('Access-Control-Allow-Origin', origin);\n"
-            "    res.setHeader('Access-Control-Allow-Credentials', 'true');\n"
-            "    res.setHeader('Vary', 'Origin');\n"
-            "  }\n"
-            "}"
-        )
-    elif "secret" in prompt_lower or "token" in prompt_lower or "jwt" in prompt_lower:
-        reply = (
-            "### Finding: Insecure Secret or JWT Token Storage (CWE-922 / CWE-522)\n\n"
-            "**Root Cause**: Client tokens stored in `localStorage` or hardcoded environment variables are vulnerable to credential extraction via XSS or repository history scanning.\n\n"
-            "**Remediation Recommendation**:\n"
-            "Persist session tokens exclusively in `HttpOnly`, `Secure`, `SameSite=Strict` cookies to make them inaccessible to client-side scripts."
-        )
-        remediation_code = (
-            "// Set HttpOnly, Secure, SameSite Cookie\n"
-            "res.setHeader('Set-Cookie', [\n"
-            "  `token=${jwtToken}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=3600`\n"
-            "]);"
-        )
-    elif "rate" in prompt_lower or "spoof" in prompt_lower:
-        reply = (
-            "### Vulnerability: Rate Limit Bypass via Spoofed IP Header (CWE-290)\n\n"
-            "**Root Cause**: Directly trusting client-controlled headers (`x-forwarded-for`, `cf-connecting-ip`) allows attackers to rotate arbitrary IP values and bypass authentication throttling.\n\n"
-            "**Remediation Recommendation**:\n"
-            "Only trust proxy headers when received from authenticated trusted reverse proxy CIDRs."
-        )
-        remediation_code = (
-            "// Trusted Proxy Verification\n"
-            "function getClientIp(req: Request): string {\n"
-            "  const socketIp = req.socket.remoteAddress;\n"
-            "  if (TRUSTED_PROXY_IPS.includes(socketIp)) {\n"
-            "    return req.headers.get('cf-connecting-ip') || socketIp;\n"
-            "  }\n"
-            "  return socketIp;\n"
-            "}"
-        )
-    else:
-        if matched_finding:
-            reply = (
-                f"### Finding: {matched_finding['title']} ({matched_finding.get('severity', 'Medium')})\n\n"
-                f"**Category**: {matched_finding.get('category')}\n"
-                f"**Description**: {matched_finding.get('description')}\n"
-                f"**Impact**: {matched_finding.get('impact') or 'Confidentiality and integrity impact.'}\n"
-                f"**Remediation**: {matched_finding.get('remediation_proposal') or 'Apply input validation and principle of least privilege.'}"
-            )
-            remediation_code = matched_finding.get("remediation_proposal") or "// Implement input sanitization per OWASP ASVS 4.0"
-        else:
-            reply = (
-                "WMSA Security Copilot ready. I have indexed the active findings, source code trees, and CISA KEV threat advisories.\n\n"
-                "You can ask about:\n"
-                "- How to remediate SSRF in `/api/rss-proxy`\n"
-                "- CORS wildcard origin remediation\n"
-                "- Fixing JWT storage in localStorage\n"
-                "- Rate limiting and client IP spoofing protection\n"
-                "- CVSS score breakdowns and exploit impact assessments"
-            )
-
-    return {
-        "reply": reply,
-        "codeSnippet": remediation_code if remediation_code else None,
-        "model": "wmsa-security-copilot-v2",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    from wmsa import copilot_chat as copilot_mod
+    return copilot_mod.answer(db, req.prompt, req.finding_id)
 
 
 @api_app.get("/api/copilot/recommendations")
 def get_copilot_recommendations():
-    recs = []
-    with db.get_connection() as conn:
-        rows = conn.execute(
-            "SELECT finding_id, title, category, severity, data_json, cvss_score FROM findings ORDER BY cvss_score DESC LIMIT 6"
-        ).fetchall()
-        for idx, r in enumerate(rows, 1):
-            data = {}
-            try:
-                data = json.loads(r["data_json"])
-            except Exception:
-                pass
-            sev = r["severity"].upper()
-            recs.append({
-                "id": idx,
-                "finding_id": r["finding_id"],
-                "priority": f"{sev.capitalize()} Priority",
-                "color": "text-red-600 dark:text-red-400" if sev == "CRITICAL" else "text-orange-600 dark:text-orange-400" if sev == "HIGH" else "text-amber-600 dark:text-amber-400",
-                "bg": "bg-red-50 dark:bg-red-950/30" if sev == "CRITICAL" else "bg-orange-50 dark:bg-orange-950/30" if sev == "HIGH" else "bg-amber-50 dark:bg-amber-950/30",
-                "border": "border-red-200 dark:border-red-900/50" if sev == "CRITICAL" else "border-orange-200 dark:border-orange-900/50" if sev == "HIGH" else "border-amber-200 dark:border-amber-900/50",
-                "dot": "bg-red-500" if sev == "CRITICAL" else "bg-orange-500" if sev == "HIGH" else "bg-amber-500",
-                "title": r["title"],
-                "impact": data.get("impact") or "Security posture degradation.",
-                "fix": data.get("remediation_proposal") or "Apply input sanitization.",
-                "codeSnippet": data.get("remediation_proposal"),
-            })
-
-    # If no findings in DB yet, provide standard World Monitor baseline recommendations
-    if not recs:
-        recs = [
-            {
-                "id": 1,
-                "finding_id": "wm-probe-ssrf-01",
-                "priority": "Critical Priority",
-                "color": "text-red-600 dark:text-red-400",
-                "bg": "bg-red-50 dark:bg-red-950/30",
-                "border": "border-red-200 dark:border-red-900/50",
-                "dot": "bg-red-500",
-                "title": "SSRF Policy & Domain Allowlist on RSS Proxy Endpoint",
-                "impact": "Unvalidated loopback proxying allows arbitrary internal service querying.",
-                "fix": "Enforce strict domain allowlist and block private IP resolution.",
-                "codeSnippet": "if (!isAllowedDomain(url)) throw new Error('Domain not allowed');",
-            },
-            {
-                "id": 2,
-                "finding_id": "wm-probe-cors-01",
-                "priority": "High Priority",
-                "color": "text-orange-600 dark:text-orange-400",
-                "bg": "bg-orange-50 dark:bg-orange-950/30",
-                "border": "border-orange-200 dark:border-orange-900/50",
-                "dot": "bg-orange-500",
-                "title": "Permissive CORS Access-Control-Allow-Origin on News API",
-                "impact": "Arbitrary origins can read cross-site user feeds and response data.",
-                "fix": "Reflect only trusted origins and disallow wildcard with credentials.",
-                "codeSnippet": "res.setHeader('Access-Control-Allow-Origin', allowedOrigin);",
-            },
-            {
-                "id": 3,
-                "finding_id": "wm-storage-01",
-                "priority": "Medium Priority",
-                "color": "text-amber-600 dark:text-amber-400",
-                "bg": "bg-amber-50 dark:bg-amber-950/30",
-                "border": "border-amber-200 dark:border-amber-900/50",
-                "dot": "bg-amber-500",
-                "title": "Insecure JWT Storage in localStorage (CWE-922)",
-                "impact": "Account takeover feasible if an XSS script executes in DOM context.",
-                "fix": "Persist tokens in HttpOnly, Secure, SameSite=Strict cookies.",
-                "codeSnippet": "res.cookie('token', jwt, { httpOnly: true, secure: true, sameSite: 'strict' });",
-            },
-        ]
-
-    return {"recommendations": recs}
+    from wmsa import copilot_chat as copilot_mod
+    return {"recommendations": copilot_mod.recommendations(db)}
 
 
 # --- Attack Surface & Threat Radar Telemetry Endpoints ---
 
 @api_app.get("/api/telemetry/attack-surface")
 def get_attack_surface():
-    findings = []
-    with db.get_connection() as conn:
-        rows = conn.execute("SELECT category, severity, data_json FROM findings").fetchall()
-        for r in rows:
-            try:
-                data = json.loads(r["data_json"])
-                findings.append({**r, **data})
-            except Exception:
-                findings.append(r)
-
-    return {
-        "nodes": [
-            {"id": "user", "label": "User Traffic", "status": "secure", "findings": 0},
-            {"id": "frontend", "label": "Frontend Vite SPA", "status": "secure" if not any(f.get("category") == "sast" for f in findings) else "warning", "findings": sum(1 for f in findings if f.get("category") == "sast")},
-            {"id": "gateway", "label": "API Gateway / RSS Proxy", "status": "vulnerable" if any(f.get("category") in ("dast", "dast_io") for f in findings) else "secure", "findings": sum(1 for f in findings if f.get("category") in ("dast", "dast_io"))},
-            {"id": "auth", "label": "Auth & Session Service", "status": "warning" if any("auth" in (f.get("endpoint") or "") for f in findings) else "secure", "findings": sum(1 for f in findings if "auth" in (f.get("endpoint") or ""))},
-            {"id": "cache", "label": "Redis Cache / Storage", "status": "warning" if any(f.get("category") == "secret" for f in findings) else "secure", "findings": sum(1 for f in findings if f.get("category") == "secret")},
-            {"id": "deps", "label": "Third-Party Dependencies", "status": "warning" if any(f.get("category") == "sca" for f in findings) else "secure", "findings": sum(1 for f in findings if f.get("category") == "sca")},
-        ]
-    }
-
+    return dashboard_mod.attack_surface(db)
 
 
 @api_app.get("/api/telemetry/radar")
 def get_telemetry_radar():
-    with db.get_connection() as conn:
-        rows = conn.execute("SELECT category, severity FROM findings").fetchall()
-
-    cats = {
-        "Authentication": 100,
-        "Authorization": 100,
-        "Input Validation": 100,
-        "API Security": 100,
-        "Data Privacy": 100,
-        "Client-side Security": 100,
-    }
-    for r in rows:
-        d = dict(r)
-        c = (d.get("category") or "").lower()
-        sev = (d.get("severity") or "").upper()
-        deduction = 25 if sev == "CRITICAL" else 15 if sev == "HIGH" else 8
-        if "auth" in c:
-            cats["Authentication"] = max(10, cats["Authentication"] - deduction)
-        elif "secret" in c:
-            cats["Data Privacy"] = max(10, cats["Data Privacy"] - deduction)
-        elif "sca" in c:
-            cats["API Security"] = max(10, cats["API Security"] - deduction)
-        elif "sast" in c:
-            cats["Input Validation"] = max(10, cats["Input Validation"] - deduction)
-        elif "dast" in c:
-            cats["Authorization"] = max(10, cats["Authorization"] - deduction)
-            cats["API Security"] = max(10, cats["API Security"] - deduction)
-
-    return {
-        "radar": [
-            {"label": k, "value": v, "maxValue": 100}
-            for k, v in cats.items()
-        ]
-    }
+    return dashboard_mod.radar(db)
 
 
+DEFAULT_TARGET_URL = "http://127.0.0.1:3000"
+
+
+@api_app.get("/api/dashboard/summary")
+def dashboard_summary():
+    healthy, msg = target_mgr.check_health()
+    return dashboard_mod.build_summary(db, DEFAULT_TARGET_URL, healthy, msg)
+
+
+class WebAuditRequest(BaseModel):
+    url: Optional[str] = None
+
+
+@api_app.post("/api/webaudit/run")
+def webaudit_run(req: WebAuditRequest):
+    if not webaudit_mod.start_background(req.url or DEFAULT_TARGET_URL):
+        raise HTTPException(status_code=409, detail="A web audit is already running")
+    return {"status": "started"}
+
+
+@api_app.get("/api/webaudit/status")
+def webaudit_status():
+    return {**webaudit_mod.get_status(), "latest": webaudit_mod.latest()}
