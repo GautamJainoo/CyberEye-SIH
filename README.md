@@ -1,12 +1,16 @@
-# World Monitor Security Assessment (WMSA)
+# World Monitor Security Assessment (WMSA) — SecureLens
 > **SIH 2026 Problem Statement ID**: 26163  
 > **Problem Statement Title**: Security Assessment of the World Monitor application  
 > **Target Repository**: [koala73/worldmonitor](https://github.com/koala73/worldmonitor)  
 > **Pinned Target Commit**: `0d5c618e4307414546a9be84a482ac06b7d56749`  
-> **Execution Environment**: `local-isolated` (Strict loopback `127.0.0.1` isolation)  
+> **Execution Environment**: `local-isolated` (strict loopback `127.0.0.1` isolation)  
 > **Theme**: Smart Automation & Cybersecurity  
 
-An end-to-end, local-first, evidence-gated security assessment platform built specifically for the World Monitor application. Enforces strict scope boundaries, cryptographic evidence gating, append-only SQLite audit trails, exact retest verification, and zero raw-secret leakage.
+An end-to-end, local-first, evidence-gated security assessment platform built for the World Monitor application. It runs six assessment methods against a pinned, isolated build, turns their output into evidence-gated findings, explains each one with an LLM, renders a proof image per finding, and presents everything in a Next.js dashboard and admin panel.
+
+**Guiding rule:** deterministic tools detect, the AI only explains, and nothing is shown as verified without evidence. Every scanner result is a `CANDIDATE` until a human analyst verifies it.
+
+> For the detailed, verified status of every component (and what is *not* done), see [`what_we_have_done.md`](what_we_have_done.md).
 
 ---
 
@@ -15,58 +19,65 @@ An end-to-end, local-first, evidence-gated security assessment platform built sp
 ```mermaid
 flowchart TD
     subgraph Isolation ["Isolated Assessment Boundary (127.0.0.1)"]
-        TargetApp["World Monitor (Pinned Commit: 0d5c618e)<br/>127.0.0.1:3000"]
-        ScopeGuard["Scope Guard (Fail-Closed)<br/>Blocks public IPs / cloud metadata"]
+        TargetApp["World Monitor (pinned commit 0d5c618e)<br/>Docker, 127.0.0.1:3000"]
+        ScopeGuard["Scope Guard (fail-closed)<br/>loopback only, kill switch"]
     end
 
-    subgraph Scanners ["Multi-Tool Scanner Pipeline"]
-        SAST["Semgrep (SAST)<br/>Curated rules + custom rules"]
-        Secrets["Gitleaks (Secrets)<br/>Salted SHA-256, zero raw leak"]
-        SCA["OSV-Scanner (SCA)<br/>Lockfile analysis + KEV cross-ref"]
-        Probes["Custom WM Probes<br/>Auth bypass, SSRF, CORS, HMAC"]
-        DAST["OWASP ZAP (DAST)<br/>Docker Compose loopback plan"]
+    subgraph Methods ["Six assessment methods"]
+        Review["1. Gemini code review<br/>grounded: quoted code must exist"]
+        SAST["2. Semgrep (SAST)<br/>custom taint rules"]
+        Secrets["3. Gitleaks (secrets)<br/>redacted, salted fingerprints"]
+        SCA["4. OSV-Scanner (dependencies)"]
+        DAST["5. OWASP ZAP (DAST)<br/>scoped Docker plan"]
+        Probes["6. World Monitor probes<br/>auth, CORS, SSRF, rate-limit, HMAC"]
     end
 
-    subgraph Pipeline ["Normalization & Gating Engine"]
-        Normalizer["Normalizer & Fingerprinter<br/>Stable 4-tuple SHA-256 converging"]
-        EvidenceMgr["Evidence Manager<br/>Sanitization & SHA-256 Artifacts"]
-        Lifecycle["Lifecycle State Machine<br/>Append-only SQLite + Triggers"]
+    subgraph Telemetry ["Real runtime telemetry"]
+        Lighthouse["Lighthouse audit<br/>perf / a11y / best practices / SEO"]
+        CDP["Headless-Chrome capture (CDP)<br/>network, cookies, storage, console, memory"]
     end
 
-    subgraph HumanGate ["Human Analyst Gate"]
-        Analyst["Human Analyst<br/>(Tool & LLM forbidden from promoting)"]
+    subgraph Pipeline ["Normalization & gating"]
+        Normalizer["Normalizer & fingerprinter"]
+        Lifecycle["Lifecycle state machine<br/>append-only audit trail"]
+        Groq["Groq explanations<br/>cause, impact, fix (explain only)"]
+        Proof["Proof image per finding"]
     end
+
+    Analyst["Human analyst<br/>(tools and LLMs cannot promote findings)"]
+    UI["Next.js dashboard, admin panel,<br/>finding pages, PDF / HTML / JSON reports"]
 
     TargetApp --> ScopeGuard
-    Scanners --> Normalizer
-    Normalizer -->|Status: CANDIDATE| Lifecycle
-    Analyst -->|Triage & Verify with SHA-256 Proof| Lifecycle
-    Lifecycle -->|Status: VERIFIED| PatchMgr["Patch & Retest Manager"]
-    PatchMgr -->|Exact Recipe Replay| Lifecycle
-    Lifecycle -->|Status: FIXED| Report["Canonical JSON & HTML Reports"]
+    Methods --> Normalizer
+    Normalizer -->|status CANDIDATE| Lifecycle
+    Lifecycle --> Groq --> Proof --> UI
+    Telemetry --> UI
+    Analyst -->|triage / verify with evidence| Lifecycle
+    Lifecycle -->|VERIFIED| Patch["Patch & exact retest"]
 ```
 
-### 1. Loopback-Only Scope Guard (Fail-Closed)
-- **Target Restriction**: All active security probes target strictly local loopback addresses (`127.0.0.1`, `localhost`).
-- **Forbidden Targets**: Under no circumstances does WMSA transmit traffic to `worldmonitor.app` or public IPs.
-- **Fail-Closed Gate**: DNS resolution checks, userinfo stripping, port restrictions (`3000`, `8080`, `46123`), and a hard kill switch (`wmsa kill` or `KILL` file sentinel) immediately terminate all activity.
+### 1. Loopback-only scope guard (fail-closed)
+- All active probing targets loopback only (`127.0.0.1`, `localhost`); public IPs, cloud metadata addresses and off-list ports (`3000`, `8080`, `46123` allowed) are blocked, and a kill switch (`wmsa kill` / `KILL` sentinel) stops activity immediately.
+- Every dashboard API endpoint that takes a `target_url` enforces the same guard and returns **403** for external hosts. `worldmonitor.app` and other public hosts are never scanned.
 
-### 2. Evidence Gate & Human Decision Enforcement
-- **Automated Scanners produce `CANDIDATE` only**: No tool, script, or AI model can advance a finding to `TRIAGED`, `VERIFIED`, or `FIXED`.
-- **Cryptographic Evidence Proof**: Transitioning to `VERIFIED` requires:
-  1. Human analyst actor (`actor_type: analyst`).
-  2. Documented business and security impact analysis.
-  3. Pinned commit SHA and build ID.
-  4. Cryptographic SHA-256 hashed evidence artifact recorded in SQLite.
-- **Fixed Gate**: Transitioning to `FIXED` requires proposing a patch, applying to an isolated branch (`assess/<finding-id>`), and replaying the **exact recipe** with outcome `FIXED` matching before/after proof.
+### 2. Evidence gate & human decision enforcement
+- Scanners, scripts and LLMs produce `CANDIDATE` only; none can advance a finding to `TRIAGED`, `VERIFIED` or `FIXED` (attempts are audited).
+- `VERIFIED` requires an analyst actor, a reason, a documented impact, a pinned commit/build and a hashed evidence artifact. `FIXED` requires a patch on an isolated branch and an exact-recipe retest with outcome `FIXED`.
+- A retest whose recipe never exercises the target (the offline HMAC simulation) is `INCONCLUSIVE` and cannot mark a finding fixed.
 
-### 3. Salted Fingerprints & Zero Secret Leakage
-- **Salted Hashes**: Hardcoded tokens, API keys, or leaked credentials are never stored in raw form.
-- **Deep Redaction**: Both scanner outputs and LLM prompts pass through `redact()` replacing tokens with `[REDACTED_SECRET]` and computing salted SHA-256 hashes (`hmac-sha256(salt, secret)`).
+### 3. Honest results: no simulated or placeholder data
+- A missing scanner binary **fails loudly**; there are no fallback "pretend" scanners.
+- The dashboard shows only measured or stored data. With no data you see zeros and "not measured" states, never invented scores. Trends appear only after 2+ real audits.
+- Probe verdicts are fail-closed: blocked, unobservable or mismatching steps are never reported as "expectation met".
 
-### 4. Append-Only Audit Trail
-- SQLite database (`wmsa.db`) with custom triggers preventing `DELETE` or `UPDATE` on `state_transitions` and `audit_events`.
-- Full-Text Search (FTS5) indexed catalog for threat advisories and vulnerabilities.
+### 4. AI assistance with guardrails
+- **Gemini** reviews the code structure; a finding is kept only if its file exists and the quoted code really appears in it (hallucinations are dropped).
+- **Groq** normalizes each finding into one explanation and powers the copilot, which answers only from stored findings.
+- Source and findings sent to a model are redacted and fenced as untrusted data. Gemini's setup plan is checked against an allowlist; only the vetted loopback compose file is ever executed.
+
+### 5. Zero raw-secret leakage & append-only audit trail
+- Tokens are redacted (`[REDACTED_SECRET]`) in scanner output, LLM prompts, raw-output views and browser-storage inspection; fingerprints are salted hashes.
+- `state_transitions` and `audit_events` reject `UPDATE`/`DELETE` via database triggers.
 
 ---
 
@@ -74,187 +85,167 @@ flowchart TD
 
 ```text
 Secure-Lens-SIH/
-├── frontend/                   # Next.js (React) + Tailwind CSS dashboard, admin panel and finding pages
-│   ├── src/                    # UI Components, pages, Inspect suite, telemetry
-│   ├── public/                 # Static assets
-│   ├── package.json            # Frontend dependencies
-│   └── next.config.mjs         # Next.js configuration
+├── frontend/                   # Next.js (App Router) + Tailwind + Redux Toolkit, served on :3100
+│   ├── src/app/                # /admin and /findings/[id] pages
+│   ├── src/views/              # Dashboard (/)
+│   ├── src/components/         # cards, DevTools suite, scan modal, proof lightbox …
+│   ├── src/store, lib, services/
+│   └── next.config.mjs
 │
-├── backend/                    # Core Python WMSA Platform & Engine
-│   ├── config/                 # Scope manifests (scope.yaml) & scan profiles
-│   ├── docker/                 # OWASP ZAP & target isolated container compose files
-│   ├── probes/                 # WM-specific safe probe recipes and review notes
-│   ├── rules/                  # Curated Semgrep & ZAP security rules
-│   ├── src/wmsa/               # Core engine (adapters, lifecycle, DB, intel, LLM)
-│   ├── tests/                  # Pytest suite (79 tests) & calibration fixture
-│   ├── target/                 # Pinned World Monitor checkout (127.0.0.1:3000)
-│   ├── pyproject.toml          # Backend package specifications
-│   ├── requirements.txt        # Python dependency manifest
-│   └── main.py                 # FastAPI application bridge
+├── backend/                    # Python WMSA engine + FastAPI
+│   ├── config/                 # scope.yaml (loopback allowlist), profiles.yaml, tools.lock.json
+│   ├── docker/                 # compose.target.yaml (isolated World Monitor), compose.zap.yaml
+│   ├── probes/                 # probe recipes + manual review notes
+│   ├── rules/                  # Semgrep rules, Gitleaks config, ZAP plan template
+│   ├── src/wmsa/
+│   │   ├── adapters/           # semgrep, gitleaks, osv, zap, probes, gemini_review
+│   │   ├── pipeline.py         # one-click pipeline (setup → scans → audit → explain → proofs)
+│   │   ├── orchestrator.py, enrich.py, proof.py, cdp.py, webaudit.py
+│   │   ├── dashboard.py, copilot_chat.py, setup_assistant.py, devtools.py, api.py
+│   │   └── scope.py, lifecycle.py, evidence.py, normalize.py, patching.py, retest.py, intel.py, report.py, db.py
+│   ├── tests/                  # 79 tests + calibration fixture
+│   ├── .env.example            # GEMINI_API_KEY / GROQ_API_KEY template (copy to .env, never commit)
+│   └── target/                 # pinned World Monitor checkout (gitignored, created by `wmsa target setup`)
 │
-├── Makefile                    # Root runner (check, scan, report, server)
-├── README.md                   # Complete documentation
-└── .gitignore                  # Git ignore rules
+├── Makefile                    # install, check, scan, report, server, dashboard, target-up/down
+├── what_we_have_done.md        # detailed verified status, limitations, change log
+└── README.md
 ```
 
 ---
 
 ## 🛠️ Tool Suite & Versions
 
-All tool binaries and versions are pinned in [`backend/tools.lock.json`](file:///Users/dewashishhatekar/Developer/Projects/Secure-Lens-SIH/backend/tools.lock.json):
+Scanner binaries and versions are pinned in [`backend/tools.lock.json`](backend/tools.lock.json):
 
-| Category | Tool | Pinned Version | Execution Mode | Scope / Safety |
+| Category | Tool | Version | Mode | Notes |
 |---|---|---|---|---|
-| **SAST** | Semgrep | `1.176.0` | Local CLI | `--metrics=off`, curated registries + custom rules |
-| **Secrets** | Gitleaks | `8.30.1` | Local CLI | `--redact`, salted fingerprinting, zero leakage |
-| **SCA** | OSV-Scanner | `2.6.0` | Local CLI | `--no-ignore -r target`, parses 8 lockfiles |
-| **DAST** | OWASP ZAP | `stable` | Docker Compose | Isolated bridge network, strict loopback host filter |
-| **Probes** | Custom Runners | `1.0.0` | Python | Precondition checks, rate limits, safe payloads |
-| **Intel** | CISA KEV / GHSA | Live / Cached | Local SQLite FTS5 | Exact CVE matching only, offline cache fallback |
+| **Code review** | Gemini API | `gemini-3.8-flash` (+ fallbacks) | Cloud API | Redacted, grounded; key from `backend/.env` |
+| **SAST** | Semgrep | `1.176.0` | Local CLI | `--metrics=off`, custom taint rules |
+| **Secrets** | Gitleaks | `8.30.1` | Local CLI | `--redact`, default rules + allowlists |
+| **SCA** | OSV-Scanner | `2.6.0` | Local CLI | lockfile analysis |
+| **DAST** | OWASP ZAP | `stable` | Docker | free proxy port, loopback scope, ~5 min |
+| **Probes** | Custom runners | `1.0.0` | Python | scope-guarded, request-capped, honest verdicts |
+| **Web audit** | Lighthouse | `13.x` (via `npx`) | Headless Chrome | real Performance/Accessibility/Best Practices/SEO + Core Web Vitals |
+| **Browser capture** | Chrome DevTools Protocol | Chrome/Chromium | Headless | real network, cookies, storage, console, memory |
+| **Explanations** | Groq | `openai/gpt-oss-120b` | Cloud API | explains only; template fallback |
+| **Intel** | CISA KEV / GHSA | live / cached | SQLite FTS5 | exact CVE matching |
 
 ---
 
-## 🚀 Clean-Machine Reproduction Guide
+## 🚀 Quick Start (clean machine)
 
-### Step 1: Clone & Setup Virtual Environment
+**Prerequisites:** Python 3.11+, Node.js 20+, Docker, Chrome/Chromium, [`uv`](https://docs.astral.sh/uv/) (recommended), and the `gitleaks` (8.30.1) and `osv-scanner` (2.6.0) binaries on your `PATH` or in `~/.local/bin`.
+
 ```bash
-git clone https://github.com/nikhil-kumarrr/Secure-Lens-SIH.git
+git clone https://github.com/Dewashish-resiliencesoft/Secure-Lens-SIH.git
 cd Secure-Lens-SIH
 
-# Create and activate Python virtual environment (Python 3.11+)
-python3 -m venv .venv
-source .venv/bin/activate
+# 1. Backend environment (creates backend/.venv; installs Semgrep and psycopg extras)
+make install
 
-# Install WMSA backend in editable mode
-pip install -e backend
+# 2. API keys for the AI features (optional; scanners work without them)
+cp backend/.env.example backend/.env      # then edit: GEMINI_API_KEY, GROQ_API_KEY
+
+# 3. Run the tests
+make check                                # 79 tests
+
+# 4. Clone the pinned target and start it isolated on 127.0.0.1:3000
+backend/.venv/bin/python -m wmsa.cli target setup
+make target-up                            # docker compose, loopback only
+
+# 5. Start the API (127.0.0.1:8000) and the dashboard (127.0.0.1:3100)
+make server            # terminal 1
+make dashboard         # terminal 2
 ```
 
-### Step 2: Run Full Test & Calibration Suite
-```bash
-make check
-```
-*Executes all 56+ tests: scope guard matrix, adapter parsers, evidence gates, append-only triggers, retest workflow, threat intel FTS5 search, prompt injection defense, and calibration precision/recall.*
+Open **http://127.0.0.1:3100/admin** and press **“Run all 6 scans”**. The pipeline runs Gemini review → Semgrep → Gitleaks → OSV → ZAP → probes → Lighthouse → Groq explanations → proof images (about 9 minutes, mostly the ZAP scan). Without API keys the Gemini review and Groq explanations report an error or use template text; the other methods still run.
 
-### Step 3: Initialize Database & Validate Scope
-```bash
-wmsa init
-wmsa scope validate
-```
-
-### Step 4: Verify or Launch Target Build
-```bash
-# Verify pinned target commit (0d5c618e4307414546a9be84a482ac06b7d56749)
-wmsa target verify
-
-# Check target application health on 127.0.0.1:3000
-wmsa target health
-```
-
-### Step 5: Execute Orchestrated Assessment Scan
-```bash
-# Run multi-tool scan (SAST + Secrets + SCA + Custom Probes)
-wmsa scan --profile lite
-
-# List detected candidate findings
-wmsa findings list
-```
-
-### Step 6: Human Analyst Triage & Evidence Gate
-```bash
-# View finding details, affected lines, and fingerprint
-wmsa findings show <finding-id>
-
-# Triage finding
-wmsa triage <finding-id> --reason "Confirmed unvalidated loopback proxying in api/rss-proxy.js"
-
-# Verify finding (requires attached evidence and documented impact)
-wmsa verify <finding-id> --reason "Reproduced SSRF in local environment" --impact "Internal service probing and unauthorized loopback access"
-```
-
-### Step 7: Patch & Exact Retest
-```bash
-# Propose a minimal remediation diff
-wmsa patch propose <finding-id> --file patch.diff
-
-# Apply patch in isolated assess/<finding-id> branch
-wmsa patch apply <finding-id>
-
-# Retest using identical recipe to verify remediation
-wmsa retest <finding-id> --recipe wm-probe-ssrf-01
-```
-
-### Step 8: Export Reports
-```bash
-# Export canonical JSON and styled HTML reports
-make report
-# Or via CLI:
-wmsa report export --format html --out reports/worldmonitor_security_report.html
-wmsa report export --format json --out reports/worldmonitor_security_report.json
-```
-
-### Step 9: Launch Local Assessment Dashboard
-```bash
-make server
-# Binds strictly to http://127.0.0.1:8000
-```
+### Where to look
+| URL | What it shows |
+|---|---|
+| `/` | dashboard: measured Lighthouse scores, Core Web Vitals, activity, recommendations, posture/radar, findings, attack surface, copilot, reports (deep-link tabs with `?tab=inspect`, `vulns`, `ai-chat`, `reports`, `admin`) |
+| `/admin` | pipeline runner with live status, findings with filters and proof thumbnails, per-tool runs (method, command, raw hash, redacted raw output), Gemini review notes, audit log |
+| `/findings/<id>` | where it was found, how the tool found it, proof image (click to enlarge), highlighted code, cause, impact, exploitation walkthrough, fix, lifecycle |
+| `http://127.0.0.1:8000/docs` | API reference |
 
 ---
 
-## 📋 Complete CLI Reference
+## 🔬 CLI workflow (analyst gate, patch and retest)
 
+```bash
+wmsa init && wmsa scope validate          # database + scope manifest
+wmsa target health                        # target reachable on 127.0.0.1:3000?
+wmsa scan --profile lite                  # tools from config/profiles.yaml
+wmsa findings list
+wmsa findings show <finding-id>
+
+# Analyst decisions (evidence gate)
+wmsa triage <finding-id> --reason "Confirmed missing allowlist in rss-proxy sidecar"
+wmsa verify <finding-id> --reason "Reproduced against local target" --impact "Open relay for arbitrary public URLs"
+
+# Patch on an isolated branch, then replay the exact recipe
+wmsa patch propose <finding-id> --diff-file patch.diff
+wmsa patch apply <finding-id>
+wmsa retest <finding-id> wm-probe-ssrf-01
+
+# Reports
+wmsa report export --format html --out backend/reports/worldmonitor_security_report.html
+wmsa report export --format json --out backend/reports/worldmonitor_security_report.json
+```
+PDF export is available from the API/dashboard (`GET /api/report/export?format=pdf`, rendered with headless Chrome).
+
+### CLI reference
 ```text
-wmsa init                              # Initialize database schema and verify environment
-wmsa kill                              # Emergency kill switch: stops active probes
-wmsa scan [--profile lite|full]        # Trigger orchestrated multi-scanner pipeline
-wmsa findings list                     # List findings with optional --status/--severity filters
-wmsa findings show <id>                # Inspect finding detail, timeline, and evidence
-wmsa triage <id> --reason <text>       # Promote CANDIDATE -> TRIAGED (analyst only)
-wmsa verify <id> --reason <text>       # Promote TRIAGED -> VERIFIED (requires evidence)
-wmsa reject <id> --reason <text>       # Reject finding (analyst only)
-wmsa patch propose <id> --file <diff>  # Propose patch diff
-wmsa patch apply <id>                  # Create isolated branch assess/<id> and apply patch
-wmsa retest <id> --recipe <recipe-id>  # Replay identical recipe and establish before/after proof
-wmsa report export [--format json|html]# Export canonical JSON / styled HTML report
-wmsa intel sync [--force]              # Synchronize CISA KEV and GHSA feeds into SQLite FTS5
-wmsa intel search <query>              # FTS5 keyword and CVE search
-wmsa intel status                      # View feed freshness and sync status
-wmsa server [--port 8000]              # Launch local dashboard API bound to 127.0.0.1
+wmsa init                               Initialize directories, database and verify tools
+wmsa kill                               Kill switch: abort scans and block outbound traffic
+wmsa scan [--profile lite|standard]     Run the multi-scanner pipeline (standard adds ZAP)
+wmsa findings list | show <id>          List / inspect findings and evidence
+wmsa triage | verify | reject <id>      Analyst decisions (evidence-gated)
+wmsa patch propose <id> --diff-file <f> | apply <id>   Patch diff and isolated branch assess/<id>
+wmsa retest <id> <recipe-id>            Exact-recipe replay with before/after proof
+wmsa target setup | up | down | health  Clone pinned commit, run isolated target, health gate
+wmsa scope validate                     Validate the loopback scope manifest
+wmsa probes …                           World Monitor probe operations
+wmsa intel sync | search | status       CISA KEV / GHSA sync and FTS5 search
+wmsa report export [--format json|html] Export the report
+wmsa server [--port 8000]               Launch the API on 127.0.0.1
 ```
 
 ---
 
 ## 🎯 Calibration & Precision / Recall
 
-A dedicated, isolated calibration fixture is maintained in `tests/fixtures/calibration/` with known planted vulnerabilities and clean controls:
-- **Planted Issues (True Positives)**:
-  - `CALIB-SAST-01`: DOM XSS in `src/app.js` (`innerHTML` assignment).
-  - `CALIB-SECRET-01`: Planted fake GitHub PAT token in `config/secrets.env`.
-  - `CALIB-SCA-01`: Pinned vulnerable `lodash@4.17.15` (CVE-2021-23337) in `package-lock.json`.
-  - `CALIB-PROBE-01`: Unauthenticated RSS proxy SSRF simulation.
-- **Controls (True Negatives)**:
-  - `CALIB-CLEAN-01`: Safe `textContent` DOM manipulation.
-  - `CALIB-CLEAN-02`: Parameterized environment variable placeholder.
-- **Results**:
-  - Precision: **4/4 (100.0%)**
-  - Recall: **4/4 (100.0%)**
-  - Live target findings are kept strictly isolated and never conflated with calibration metrics.
+A calibration fixture in `backend/tests/fixtures/calibration/` contains known planted issues and clean controls:
+- **Planted:** DOM XSS (`innerHTML`), a fake GitHub PAT in `config/secrets.env`, vulnerable `lodash@4.17.15`, and an RSS-proxy SSRF simulation.
+- **Controls:** safe `textContent` use and a parameterized placeholder.
+- **Result:** 4/4 planted issues detected and 0 false positives on the controls (`test_calibration.py`). Live-target findings are kept separate from calibration metrics.
+
+---
+
+## 📊 Latest run on the pinned target (for reference)
+
+85 candidate findings from 6/6 scanners: Semgrep 14, Gitleaks 14, OSV 42, ZAP 9, Gemini review 5, probes 1; 64 endpoints with recorded results; Lighthouse 73 / 96 / 96 / 92 (performance varies run to run); risk score 61 (High, candidate-weighted). Only one finding has been reproduced by hand — the `/api/rss-proxy` sidecar has no domain allowlist and relays arbitrary public URLs (private IPs and metadata addresses are blocked) — so treat the rest as candidates to triage.
 
 ---
 
 ## ⚠️ Mandatory Limitations & Integrity Note
 
-1. **Cryptographic SHA-256 Hashing**: Evidence artifacts and reports are hashed using SHA-256. These hashes detect byte alteration and post-execution tampering; they are cryptographic integrity proofs, not third-party digital identity signatures.
-2. **Candidate Hypotheses**: All automated scanner outputs are classified as `CANDIDATE` hypotheses until vetted and verified by a qualified human analyst through the evidence gate.
-3. **Loopback Scope**: All testing was performed strictly against an isolated local checkout (`127.0.0.1:3000`). Public hosts and `worldmonitor.app` were never targeted.
+1. **Candidates, not confirmed vulnerabilities.** All automated output is `CANDIDATE` until vetted by an analyst; Gemini/Groq output is explanatory and can over-state severity.
+2. **Cryptographic SHA-256 hashing** detects alteration of evidence and reports; it is an integrity proof, not a digital identity signature.
+3. **Loopback scope.** All testing targets the isolated local checkout. Public hosts, including `worldmonitor.app`, are never scanned.
+4. **Not exercised in the latest verification:** the patch/retest flow on the real target, the PostgreSQL path (SQLite is the default), and prompt-injection resistance against a live model. **Not implemented:** NVD sync, target test accounts, a scheduler, and video proof (images only).
+5. **Free-tier AI quotas** can cause fallbacks (model order for Gemini, template text for Groq).
+6. **API keys** live only in `backend/.env` (gitignored). Rotate any key that has been shared.
 
 ---
 
 ## 🛡️ Responsible Disclosure Policy
 
 Per the World Monitor security policy ([`SECURITY.md`](https://github.com/koala73/worldmonitor/blob/main/SECURITY.md)):
-- Genuine vulnerabilities must be reported privately via **[GitHub Private Vulnerability Reporting](https://github.com/koala73/worldmonitor/security/advisories/new)** or by contacting the repository maintainers.
-- Never file public GitHub issues for unpatched vulnerabilities.
-- Provide step-by-step reproduction instructions and safe PoCs to allow maintainers sufficient time to publish patches.
+- Report genuine vulnerabilities privately via **[GitHub Private Vulnerability Reporting](https://github.com/koala73/worldmonitor/security/advisories/new)** or to the maintainers.
+- Never file public issues for unpatched vulnerabilities.
+- Provide step-by-step reproduction and safe PoCs so maintainers can publish patches.
 
 ---
 
