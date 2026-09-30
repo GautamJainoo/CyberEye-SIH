@@ -1,5 +1,0 @@
-# Netlify API Proxy to AWS Backend via permanent ALB (bypasses browser HTTPS Mixed Content blocking)
-/api/*  http://wmsa-alb-1972898098.ap-south-1.elb.amazonaws.com/api/:splat  200!
-
-# SPA Client-Side Routing (prevents 404 on refresh)
-/*      /index.html                           200
