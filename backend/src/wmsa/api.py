@@ -7,6 +7,7 @@ lifecycle state machine, and report generator.
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,10 +39,14 @@ api_app = FastAPI(
 )
 app = api_app
 
-# CORS restricted to local dashboard origins
-api_app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+# CORS origins (defaults to local dashboard origins, override via CORS_ALLOWED_ORIGINS)
+cors_env = os.getenv("CORS_ALLOWED_ORIGINS")
+if cors_env and cors_env.strip() == "*":
+    cors_origins = ["*"]
+elif cors_env:
+    cors_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+else:
+    cors_origins = [
         "http://127.0.0.1:5173",
         "http://localhost:5173",
         "http://127.0.0.1:5174",
@@ -50,7 +55,11 @@ api_app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:3000",
         "http://localhost:3000",
-    ],
+    ]
+
+api_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
