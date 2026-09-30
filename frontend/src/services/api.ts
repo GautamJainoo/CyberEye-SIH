@@ -1,7 +1,18 @@
 import { Vulnerability, Severity, Status } from '../types'
 
-// Backend API (FastAPI on loopback). Override with NEXT_PUBLIC_API_BASE.
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000/api'
+// Backend API. Supports direct AWS backend URL and relative /api proxy on HTTPS (e.g. Netlify)
+function resolveApiBase(): string {
+  if (typeof window !== 'undefined') {
+    // If running in browser on HTTPS (Netlify/CloudFront/Vercel) and backend is HTTP,
+    // route via relative '/api' proxy to avoid browser Mixed Content blocking.
+    if (window.location.protocol === 'https:') {
+      return '/api'
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_BASE || 'http://13.201.10.69:8000/api'
+}
+
+export const API_BASE = resolveApiBase()
 export const API_ORIGIN = API_BASE.replace(/\/api$/, '')
 
 export interface BackendHealth {

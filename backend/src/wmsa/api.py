@@ -32,6 +32,14 @@ from wmsa.devtools import DevToolsEngine
 from wmsa import dashboard as dashboard_mod, enrich as enrich_mod, pipeline as pipeline_mod, proof as proof_mod, webaudit as webaudit_mod
 from wmsa.paths import get_base_dir
 
+try:
+    from dotenv import load_dotenv
+    _env_f = get_base_dir() / ".env"
+    if _env_f.exists():
+        load_dotenv(_env_f)
+except ImportError:
+    pass
+
 api_app = FastAPI(
     title="WMSA Local Assessment API",
     version="1.0.0",
