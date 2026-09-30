@@ -539,7 +539,8 @@ def search_intel(q: str = Query(..., min_length=1), limit: int = 50):
 def _host_of(url: str) -> str:
     from urllib.parse import urlparse
     raw = url if "://" in url else f"https://{url}"
-    return (urlparse(raw).hostname or "").lower()
+    h = (urlparse(raw).hostname or "").lower()
+    return h[4:] if h.startswith("www.") else h
 
 
 def _require_in_scope(url: str) -> str:
