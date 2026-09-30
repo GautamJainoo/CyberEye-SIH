@@ -3,7 +3,7 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "http://13.201.10.69:8000/api/:splat"
+  to = "http://wmsa-alb-1972898098.ap-south-1.elb.amazonaws.com/api/:splat"
   status = 200
   force = true
 

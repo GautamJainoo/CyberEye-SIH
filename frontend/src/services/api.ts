@@ -9,7 +9,7 @@ function resolveApiBase(): string {
       return '/api'
     }
   }
-  return process.env.NEXT_PUBLIC_API_BASE || 'http://13.201.10.69:8000/api'
+  return process.env.NEXT_PUBLIC_API_BASE || 'http://wmsa-alb-1972898098.ap-south-1.elb.amazonaws.com/api'
 }
 
 export const API_BASE = resolveApiBase()

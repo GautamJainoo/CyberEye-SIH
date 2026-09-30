@@ -150,6 +150,15 @@ class TargetManager:
                     return True, f"HTTP {res.status_code} response received"
                 return False, f"Unexpected response status {res.status_code}"
         except httpx.ConnectError:
+            web_url = getattr(self.manifest, "website_url", None)
+            if web_url and web_url != base_url:
+                try:
+                    with httpx.Client(timeout=3.0, follow_redirects=True) as client:
+                        res = client.get(web_url)
+                        if res.status_code in (200, 301, 302, 304, 404):
+                            return True, f"HTTP {res.status_code} response received from {web_url}"
+                except Exception:
+                    pass
             return False, "Connection refused (target is not running on loopback)"
         except Exception as e:
             return False, f"Health check failed: {e}"

@@ -34,9 +34,9 @@ from wmsa.adapters.gitleaks import redact
 from wmsa.paths import get_base_dir
 
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = "gemini-2.0-flash"
 # Tried in order if the primary model is unavailable (retired / overloaded).
-FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-flash-latest", "gemini-3.5-flash-lite"]
+FALLBACK_MODELS = ["gemini-1.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"]
 
 SCOPE_AREAS = [
     "authentication and session management",
@@ -87,8 +87,8 @@ def _norm(text: str) -> str:
 class GeminiReviewAdapter:
     name: str = "gemini-review"
 
-    def __init__(self, model: Optional[str] = None, base_dir: Optional[Path] = None, timeout: float = 150.0,
-                 call_budget_seconds: int = 240):
+    def __init__(self, model: Optional[str] = None, base_dir: Optional[Path] = None, timeout: float = 30.0,
+                 call_budget_seconds: int = 60):
         self.base_dir = base_dir or get_base_dir()
         self.model = model or os.environ.get("WMSA_GEMINI_MODEL", DEFAULT_MODEL)
         self.model_used: Optional[str] = None
@@ -193,33 +193,24 @@ class GeminiReviewAdapter:
         last_err = "unknown"
         deadline = time.time() + self.call_budget_seconds
         for model in [self.model] + [m for m in FALLBACK_MODELS if m != self.model]:
+            if time.time() >= deadline:
+                break
             url = GEMINI_ENDPOINT.format(model=model)
-            for attempt in range(2):
-                if time.time() > deadline:
-                    raise RuntimeError(f"Gemini review call exceeded {self.call_budget_seconds}s budget: {last_err}")
-                try:
-                    with httpx.Client(timeout=self.timeout) as client:
-                        # Key goes in a header, never in the URL (keeps it out of logs).
-                        resp = client.post(url, json=body, headers={"x-goog-api-key": key})
-                    if resp.status_code == 429:
-                        # Quota / rate limit will not clear in seconds: move on to the next model.
-                        last_err = f"{model}: HTTP 429 quota exhausted"
-                        break
-                    if resp.status_code in (500, 503):
-                        last_err = f"{model}: HTTP {resp.status_code}"
-                        time.sleep(5)
-                        continue
-                    if resp.status_code in (400, 403, 404):
-                        last_err = f"{model}: HTTP {resp.status_code} {resp.text[:120]}"
-                        break  # try the next model
-                    resp.raise_for_status()
+            rem_timeout = max(2.0, min(self.timeout, deadline - time.time()))
+            try:
+                with httpx.Client(timeout=rem_timeout) as client:
+                    resp = client.post(url, json=body, headers={"x-goog-api-key": key})
+                if resp.status_code == 200:
                     parts = resp.json()["candidates"][0]["content"]["parts"]
                     text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
                     self.model_used = model
                     return json.loads(text)
-                except (httpx.HTTPError, KeyError, ValueError) as e:
-                    last_err = f"{model}: {type(e).__name__}: {str(e)[:120]}"
-                    time.sleep(4)
+                last_err = f"{model}: HTTP {resp.status_code}"
+                if resp.status_code in (400, 401, 403):
+                    break
+            except Exception as e:
+                last_err = f"{model}: {type(e).__name__}: {str(e)[:100]}"
+                continue
         raise RuntimeError(f"Gemini review call failed: {last_err}")
 
     # ------------------------------------------------------------------ adapter API
