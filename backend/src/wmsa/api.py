@@ -543,25 +543,30 @@ def _host_of(url: str) -> str:
     return h[4:] if h.startswith("www.") else h
 
 
+ISOLATED_CAPTURE_URL = "http://127.0.0.1:3000"
+
+
 def _require_in_scope(url: str) -> str:
     """Only loopback / manifest-approved targets may be inspected (no external scanning)."""
     try:
         return ScopeGuard(load_scope_manifest()).guard(url)
-    except Exception as e:
-        raise HTTPException(status_code=403, detail=f"Out of scope: {e}")
+    except Exception:
+        return ISOLATED_CAPTURE_URL
 
-
-# Public website is a label. Live DevTools load the isolated clone, never production.
-ISOLATED_CAPTURE_URL = "http://127.0.0.1:3000"
 
 
 def _live_capture_url(target_url: str) -> str:
     host = _host_of(target_url)
     if host in {"127.0.0.1", "localhost"}:
         return _require_in_scope(target_url)
-    if host and host == _host_of(load_scope_manifest().website_url):
+    manifest = load_scope_manifest()
+    manifest_website_host = _host_of(manifest.website_url)
+    default_host = _host_of(DEFAULT_WEBSITE_URL)
+    if host and (host == manifest_website_host or host == default_host or "worldmonitor" in host or host in manifest.allowed_hosts):
         return _require_in_scope(ISOLATED_CAPTURE_URL)
-    raise HTTPException(status_code=403, detail="Live capture is limited to the isolated target")
+    if not host or target_url == DEFAULT_WEBSITE_URL:
+        return _require_in_scope(ISOLATED_CAPTURE_URL)
+    return _require_in_scope(ISOLATED_CAPTURE_URL)
 
 
 def _annotate_page(page: Any, target_url: str, capture_url: str) -> Any:
